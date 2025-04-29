@@ -1,0 +1,5 @@
+feature1 > 0
+feature2 < 2
+category == 'A'
+feature1 > 0 and feature2 < 3
+category != 'C'
