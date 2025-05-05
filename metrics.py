@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, accuracy_score, f1_score
-from common import GT_COL, SCORE_COL
+from common import GT_COL, SCORE_COL, get_meta_columns_in_order, cache_data
 
 def compute_max_f1(y_true, y_score):
     thresholds = np.unique(y_score)
@@ -45,6 +45,7 @@ def compute_metrics(models_df, queries, metrics, thresholds=None):
 
     return raw_results
 
+@cache_data
 def apply_thresholds_and_evaluate(models_df, queries_dict, metrics, thresholds):
     raw_results = compute_metrics(models_df, list(queries_dict.keys()), metrics)
     raw_results_thresholds = compute_metrics(models_df, list(queries_dict.keys()), metrics, thresholds)

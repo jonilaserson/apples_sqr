@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, precision_score, recall_score
-from common import GT_COL, SCORE_COL
+from common import GT_COL, SCORE_COL, get_meta_columns_in_order
 from metrics import compute_confusion_elements
 
 def plot_roc_curve_for_model(y_true, y_score, threshold, color, model_name, ax=None, title=None, figsize=(4, 4)):

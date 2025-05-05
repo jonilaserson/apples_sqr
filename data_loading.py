@@ -1,6 +1,8 @@
 import pandas as pd
-from common import GT_COL, SCORE_COL
+from pathlib import Path
+from common import GT_COL, SCORE_COL, cache_data, format_query_stats
 
+@cache_data
 def load_models(test_file, model_files, queries_file=None, filter_query=None, model_names=None, gt_column='GT', score_column='score'):
     if model_names is None:
         model_names = [Path(mf).stem for mf in model_files]
