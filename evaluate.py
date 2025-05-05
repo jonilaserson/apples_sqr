@@ -7,6 +7,15 @@ from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_prec
 from pathlib import Path
 import time
 import matplotlib.pyplot as plt
+import streamlit as st
+from data_loading import load_models
+from metrics import apply_thresholds_and_evaluate
+from display import display_results, transform_df_for_model_view, plot_roc_and_pr_curves_for_streamlit
+from common import cache_data
+
+# Standardized column names
+GT_COL = "_GT_"
+SCORE_COL = "_score_"
 
 def cache_data(func=None, **kwargs):
     if func is None:
@@ -14,7 +23,6 @@ def cache_data(func=None, **kwargs):
     return func
 
 try:
-    import streamlit as st
     st.set_page_config(layout="wide")
     HAS_STREAMLIT = True
     cache_data = st.cache_data
@@ -50,7 +58,7 @@ def format_query_stats(query, total_subset, pos_count, total_samples):
 
 
 def validate_data(test_df, model_dfs):
-    pos_count = test_df['GT'].sum()
+    pos_count = test_df[GT_COL].sum()
     neg_count = len(test_df) - pos_count
 
     if pos_count == 0 or neg_count == 0:
@@ -94,11 +102,16 @@ def join_with_namespace(
 
 
 @cache_data
-def load_models(test_file, model_files, queries_file=None, filter_query=None, model_names=None):
+def load_models(test_file, model_files, queries_file=None, filter_query=None, model_names=None, gt_column='GT', score_column='score'):
     if model_names is None:
         model_names = [Path(mf).stem for mf in model_files]
     model_files = dict(zip(model_names, model_files))
     test_df = pd.read_csv(test_file).set_index("id")
+
+    # Create standardized ground truth column
+    if gt_column not in test_df.columns:
+        raise ValueError(f"Ground truth column '{gt_column}' not found in test file")
+    test_df[GT_COL] = test_df[gt_column]
 
     if filter_query:
         original_size = len(test_df)
@@ -107,8 +120,14 @@ def load_models(test_file, model_files, queries_file=None, filter_query=None, mo
         print(f"Applied filter: '{filter_query}'")
         print(f"Filtered test set from {original_size} to {filtered_size} samples ({filtered_size/original_size*100:.1f}%)")
 
-    # Set index to 'id'
-    model_dfs = {model_name: pd.read_csv(model_file).set_index("id") for model_name, model_file in model_files.items()}
+    # Set index to 'id' and rename score column
+    model_dfs = {}
+    for model_name, model_file in model_files.items():
+        model_df = pd.read_csv(model_file).set_index("id")
+        if score_column not in model_df.columns:
+            raise ValueError(f"Score column '{score_column}' not found in model file {model_file}")
+        model_df = model_df.rename(columns={score_column: SCORE_COL})
+        model_dfs[model_name] = model_df
 
     validate_data(test_df, model_dfs)
 
@@ -128,7 +147,7 @@ def load_models(test_file, model_files, queries_file=None, filter_query=None, mo
     total_samples = len(test_df)
     for query in queries:
         subset_df = test_df.copy() if query == 'all' else test_df.query(query)
-        pos_count = subset_df['GT'].sum()  # Assuming all models share same GT
+        pos_count = subset_df[GT_COL].sum()  # Using standardized column name
         neg_count = len(subset_df) - pos_count
         query_stat = format_query_stats(query, len(subset_df), pos_count, total_samples)
         has_both_classes = pos_count > 0 and neg_count > 0
@@ -151,12 +170,12 @@ def compute_metrics(models_df, queries, metrics, thresholds=None):
 
     for query in queries:
         subset_df = models_df if query == 'all' else models_df.loc[models_df["test"].query(query).index]
-        y_true = subset_df["test"]['GT']
+        y_true = subset_df["test"][GT_COL]
         for idx, model_name in enumerate(model_names):
             if model_name == "test":
                 continue
             model_data = subset_df[model_name]
-            y_pred = model_data['score']
+            y_pred = model_data[SCORE_COL]
             if thresholds is not None:
                 threshold = thresholds[idx]
                 y_pred = (y_pred >= threshold).astype(int)
@@ -296,8 +315,8 @@ def plot_curves(subset_df, thresholds, colors, curve_type='roc', query_string=No
     model_names = get_meta_columns_in_order(subset_df)[1:]
     title = ':'.join([curve_type.upper(), query_string])
     for idx, model_name in enumerate(model_names):
-        y_true = subset_df['test']['GT']
-        y_score = subset_df[model_name]['score']
+        y_true = subset_df['test'][GT_COL]
+        y_score = subset_df[model_name][SCORE_COL]
         threshold = thresholds[idx]
         color = colors[idx % len(colors)]
 
@@ -368,6 +387,8 @@ def main():
     parser.add_argument('--thresh', type=float, nargs='+', help='Threshold(s) for binary classification metrics. One value or one per model.')
     parser.add_argument('--flatten', action='store_true', help='Flatten the result table instead of showing separate tables per metric')
     parser.add_argument('--gui', action='store_true', help='Launch interactive GUI for threshold tuning')
+    parser.add_argument('--gt_column', default='GT', help='Name of the ground truth column in test set (default: GT)')
+    parser.add_argument('--score_column', default='score', help='Name of the score column in model files (default: score)')
 
     args = parser.parse_args()
 
@@ -388,7 +409,9 @@ def main():
         args.test,
         args.models,
         args.queries,
-        filter_query=args.filter
+        filter_query=args.filter,
+        gt_column=args.gt_column,
+        score_column=args.score_column
     )
 
     if args.thresh:
@@ -427,7 +450,6 @@ def main():
         results = apply_thresholds_and_evaluate(models_df, queries, metrics, threshold_inputs)
 
         query_labels = results.index.tolist()
-        #plot_container = st.container()
         table_container, plot_container = st.columns([3, 5])
 
         # Place the dropdown and radio on the same row
