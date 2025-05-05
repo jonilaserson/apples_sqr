@@ -19,6 +19,8 @@ def get_meta_columns_in_order(df):
     return seen
 
 def cache_data(func=None, **kwargs):
-    if func is None:
-        return lambda f: f
-    return func 
+    try:
+        import streamlit as st
+        return st.cache_data(**kwargs)(func)
+    except ImportError:
+        return func 

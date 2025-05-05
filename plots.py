@@ -14,7 +14,8 @@ def plot_roc_curve_for_model(y_true, y_score, threshold, color, model_name, ax=N
     ax.plot(fpr, tpr, label=f"{model_name} (AUC={model_auc:.2f})", color=color)
 
     y_pred = (y_score >= threshold).astype(int)
-    tp, fp, fn, tn = compute_confusion_elements(y_true, y_pred)
+    confusion = compute_confusion_elements(y_true, y_pred)
+    tp, fp, fn, tn = confusion['tp'], confusion['fp'], confusion['fn'], confusion['tn']
 
     if (tp + fn) > 0 and (fp + tn) > 0:
         operation_fpr = fp / (fp + tn)

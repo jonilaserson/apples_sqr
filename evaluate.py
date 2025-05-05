@@ -2,8 +2,17 @@
 import argparse
 import time
 import sys
+
+# Import and configure Streamlit first if available
+try:
+    import streamlit as st
+    st.set_page_config(layout="wide")
+    import pandas as pd
+except ImportError:
+    st = None
+    
 from data_loading import load_models
-from metrics import apply_thresholds_and_evaluate, METRIC_FUNCTIONS, THRESH_METRICS_FUNCTIONS
+from metrics import apply_thresholds_and_evaluate#, METRIC_FUNCTIONS, THRESH_METRICS_FUNCTIONS
 from display import display_results, transform_df_for_model_view, setup_streamlit_display
 from common import get_meta_columns_in_order
 
@@ -26,12 +35,13 @@ def main():
     args = parser.parse_args()
 
     metrics = [m.strip().lower() for m in args.metrics.split(',')]
-    METRICS = dict(**METRIC_FUNCTIONS, **THRESH_METRICS_FUNCTIONS)
-    invalid_metrics = [m for m in metrics if m not in METRICS]
-    if invalid_metrics:
-        print(f"Error: Invalid metrics specified: {', '.join(invalid_metrics)}")
-        print(f"Available metrics: {', '.join((METRICS).keys())}")
-        return
+    if False:
+        METRICS = dict(**METRIC_FUNCTIONS, **THRESH_METRICS_FUNCTIONS)
+        invalid_metrics = [m for m in metrics if m not in METRICS]
+        if invalid_metrics:
+            print(f"Error: Invalid metrics specified: {', '.join(invalid_metrics)}")
+            print(f"Available metrics: {', '.join((METRICS).keys())}")
+            return
 
     if args.thresh and len(args.thresh) != 1 and len(args.thresh) != len(args.models):
         print(f"Error: Number of thresholds ({len(args.thresh)}) does not match number of models ({len(args.models)})")
@@ -65,15 +75,9 @@ def main():
         print(f"\n\nTotal evaluation time: {duration:.2f} seconds")
 
     else:
-        try:
-            import streamlit as st
-            import pandas as pd
-            plot_roc_and_pr_curves_for_streamlit = setup_streamlit_display()
-        except ImportError:
+        if st is None:
             print("Error: Streamlit is required for GUI mode. Please install it with: pip install streamlit")
             return
-
-        st.set_page_config(layout="wide")
 
         # Configure pandas display options to show all columns and fix decimal places
         pd.set_option('display.max_columns', None)
@@ -110,6 +114,7 @@ def main():
 
         # Now plot, based on the *selected* query
         with plot_container:
+            plot_roc_and_pr_curves_for_streamlit = setup_streamlit_display()
             plot_roc_and_pr_curves_for_streamlit(models_df, threshold_inputs, query=selected_query_label)
 
         # Show the appropriate dataframe based on the selected view
