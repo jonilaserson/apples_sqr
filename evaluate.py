@@ -2,6 +2,8 @@
 import argparse
 import time
 import sys
+import logging
+from typing import Optional
 
 # Import and configure Streamlit first if available
 try:
@@ -16,6 +18,26 @@ from metrics import apply_thresholds_and_evaluate#, METRIC_FUNCTIONS, THRESH_MET
 from display import display_results, transform_df_for_model_view, setup_streamlit_display
 from common import get_meta_columns_in_order
 
+def print_data_summary(models_df: pd.DataFrame, queries_bool_df: pd.DataFrame, filter_query: Optional[str] = None) -> None:
+    """Print summary of loaded data."""
+    n_samples = len(models_df)
+    n_models = len(get_meta_columns_in_order(models_df)[1:])
+    n_queries = len(queries_bool_df.columns)
+    
+    print(f"\nData Summary:")
+    if filter_query:
+        print(f"  Filter: '{filter_query}'")
+    print(f"  Samples: {n_samples}")
+    print(f"  Models: {n_models}")
+    print(f"  Queries: {n_queries}")
+
+def validate_thresholds(thresholds: list[float], n_models: int) -> None:
+    """Validate that number of thresholds matches number of models."""
+    if thresholds and len(thresholds) != 1 and len(thresholds) != n_models:
+        raise ValueError(
+            f"Number of thresholds ({len(thresholds)}) does not match number of models ({n_models}). "
+            "Provide either one threshold for all models or one threshold per model."
+        )
 
 def main():
     start_time = time.time()
@@ -43,10 +65,6 @@ def main():
             print(f"Available metrics: {', '.join((METRICS).keys())}")
             return
 
-    if args.thresh and len(args.thresh) != 1 and len(args.thresh) != len(args.models):
-        print(f"Error: Number of thresholds ({len(args.thresh)}) does not match number of models ({len(args.models)})")
-        return
-
     # Load the data once
     models_df, queries = load_models(
         args.test,
@@ -57,10 +75,17 @@ def main():
         score_column=args.score_column
     )
 
+    # Print data summary
+    print_data_summary(models_df, queries, args.filter)
+
+    # Validate thresholds
+    model_names = get_meta_columns_in_order(models_df)[1:]
+    validate_thresholds(args.thresh, len(model_names))
+
     if args.thresh:
-        thresh_values = args.thresh if len(args.thresh) > 1 else [args.thresh[0]] * len(args.models)
+        thresh_values = args.thresh if len(args.thresh) > 1 else [args.thresh[0]] * len(model_names)
     else:
-        thresh_values = [0.5] * len(args.models)
+        thresh_values = [0.5] * len(model_names)
 
     if not args.gui:
         results = apply_thresholds_and_evaluate(models_df, queries, metrics, thresh_values)
@@ -87,9 +112,15 @@ def main():
 
         threshold_inputs = []
         st.sidebar.header("Thresholds per model")
-        model_names = get_meta_columns_in_order(models_df)[1:]
         for i, model_name in enumerate(model_names):
-            value = st.sidebar.slider(f"Threshold for {model_name}", min_value=0.0, max_value=1.0, step=0.05, value=float(thresh_values[i]))
+            value = st.sidebar.slider(
+                f"Threshold for {model_name}",
+                min_value=0.0,
+                max_value=1.0,
+                step=0.05,
+                value=float(thresh_values[i]),
+                help=f"Classification threshold for {model_name}. Samples with scores >= threshold are classified as positive."
+            )
             threshold_inputs.append(value)
 
         results = apply_thresholds_and_evaluate(models_df, queries, metrics, threshold_inputs)
@@ -103,13 +134,15 @@ def main():
             selected_query_label = st.selectbox(
                 "Select a query to visualize:",
                 options=query_labels,
-                index=0  # pre-select the first query
+                index=0,  # pre-select the first query
+                help="Select a query to view its metrics and performance curves"
             )
         with col2:
             view_toggle = st.radio(
                 "Select view type:",
                 options=["Query-indexed view", "Model-indexed view"],
-                horizontal=True
+                horizontal=True,
+                help="Query-indexed: metrics as rows, models as columns. Model-indexed: models as rows, metrics as columns."
             )
 
         # Now plot, based on the *selected* query
