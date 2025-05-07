@@ -11,7 +11,7 @@ try:
 except ImportError:
     st = None
     
-from data_loading import load_models
+from data_loading import prepare_tables
 from metrics import compute_metrics, raw_results_to_final_df
 from display import display_results, transform_df_for_model_view, setup_streamlit_display, display_dataset_info
 from common import get_meta_columns_in_order
@@ -40,20 +40,23 @@ def main():
     parser.add_argument('--gui', action='store_true', help='Launch interactive GUI for threshold tuning')
     parser.add_argument('--gt_column', default='GT', help='Name of the ground truth column in test set (default: GT)')
     parser.add_argument('--score_column', default='score', help='Name of the score column in model files (default: score)')
+    parser.add_argument('--score_columns', nargs='+', help='For multi-class: names of score columns in model files to sum for positive class score')
 
     args = parser.parse_args()
 
     metrics = [m.strip().lower() for m in args.metrics.split(',')]
 
+    # Determine which score column parameter to use
+    score_col_param = args.score_columns if args.score_columns else args.score_column
 
     # Load the data once
-    models_df, queries, info_dict = load_models(
+    models_df, queries, info_dict = prepare_tables(
         args.test,
         args.models,
         args.queries,
         filter_query=args.filter,
         gt_column=args.gt_column,
-        score_column=args.score_column,
+        score_column=score_col_param,
         pos_query=args.pos_query
     )
 
@@ -94,6 +97,48 @@ def main():
 
         # Add collapsible info box
         display_dataset_info(info_dict)
+
+        # Get available columns from the first model file for multi-class selection
+        try:
+            first_model_path = info_dict["model_paths"][model_names[0]]
+            first_model_df = pd.read_csv(first_model_path)
+            # Exclude id and any columns starting with underscore
+            model_class_cols = [col for col in first_model_df.columns 
+                              if col != 'id' and not col.startswith('_')]
+        except Exception as e:
+            st.warning(f"Could not read model columns for multi-class detection: {e}")
+            model_class_cols = []
+        
+        # Multi-class selection UI if multiple score columns are available
+        selected_score_columns = None
+        if len(model_class_cols) > 1:
+            st.sidebar.header("Class Selection")
+            multi_class_mode = st.sidebar.checkbox(
+                "Multi-class Mode", 
+                value=isinstance(score_col_param, list),
+                help="Enable to select which classes to consider as positive"
+            )
+            
+            if multi_class_mode:
+                selected_score_columns = st.sidebar.multiselect(
+                    "Select classes to consider as positive:",
+                    options=model_class_cols,
+                    default=info_dict.get("score_columns", []),
+                    help="Scores for these classes will be summed to determine the positive class score"
+                )
+                
+                # Recalculate if multi-class selection changed
+                if selected_score_columns and selected_score_columns != info_dict.get("score_columns", []):
+                    # Reload with new score columns selection
+                    models_df, queries, info_dict = prepare_tables(
+                        args.test,
+                        args.models,
+                        args.queries,
+                        filter_query=args.filter,
+                        gt_column=args.gt_column,
+                        score_column=selected_score_columns,
+                        pos_query=args.pos_query
+                    )
 
         threshold_inputs = []
         st.sidebar.header("Thresholds per model")

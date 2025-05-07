@@ -10,29 +10,13 @@ MetricPackage = Union[Dict[str, MetricFunc], Callable[[np.ndarray, np.ndarray], 
 RawResults = Dict[str, Dict[str, Dict[str, Dict[str, float]]]]  # package -> model -> query -> metric -> value
 
 def compute_max_f1(y_true: np.ndarray, y_score: np.ndarray) -> Optional[float]:
-    """Compute maximum F1 score across all possible thresholds.
-    
-    Args:
-        y_true: Ground truth labels
-        y_score: Predicted scores
-        
-    Returns:
-        Maximum F1 score or None if no valid threshold found
-    """
+    """Compute maximum F1 score across all possible thresholds."""
     thresholds = np.unique(y_score)
     return max((f1_score(y_true, (y_score >= t).astype(int)) for t in thresholds), default=None)
 
 
 def compute_confusion_elements(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
-    """Compute confusion matrix elements and derived metrics.
-    
-    Args:
-        y_true: Ground truth labels
-        y_pred: Predicted labels
-        
-    Returns:
-        Dictionary of metrics including tp, fp, fn, tn, precision, recall, etc.
-    """
+    """Compute confusion matrix elements and derived metrics."""
     tp = np.logical_and(y_true == 1, y_pred == 1).sum()
     fp = np.logical_and(y_true == 0, y_pred == 1).sum()
     fn = np.logical_and(y_true == 1, y_pred == 0).sum()
@@ -52,17 +36,7 @@ def compute_confusion_elements(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[s
     }
 
 def compute_plot_metrics(y_true: np.ndarray, y_score: np.ndarray) -> Dict[str, np.ndarray]:
-    """Compute metrics needed for plotting ROC and PR curves.
-    
-    Args:
-        y_true: Ground truth labels
-        y_score: Predicted scores
-        
-    Returns:
-        Dictionary containing:
-            - fpr, tpr, roc_thresh: for ROC curve
-            - precision, recall, pr_thresh: for PR curve
-    """
+    """Compute metrics needed for plotting ROC and PR curves."""
     fpr, tpr, roc_thresh = roc_curve(y_true, y_score)
     precision, recall, pr_thresh = precision_recall_curve(y_true, y_score)
     return {

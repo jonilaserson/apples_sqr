@@ -71,17 +71,41 @@ def get_valid_queries(queries_file: Optional[str], test_df: pd.DataFrame) -> pd.
     return valid_query_bools
 
 @cache_data
-def load_models(
+def load_testset_and_scores(
+    test_file: str,
+    model_files: Dict[str, str]
+) -> Tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
+    """Load test data and model predictions from CSV files.
+    
+    Args:
+        test_file: Path to test set CSV file with ground truth
+        model_files: Dictionary mapping model names to their file paths
+        
+    Returns:
+            - DataFrame with test data
+            - Dictionary mapping model names to their prediction DataFrames
+    """
+    test_df = pd.read_csv(test_file).set_index("id")
+    
+    model_dfs = {}
+    for model_name, model_file in model_files.items():
+        model_df = pd.read_csv(model_file).set_index("id")
+        model_dfs[model_name] = model_df
+        
+    return test_df, model_dfs
+
+@cache_data
+def prepare_tables(
     test_file: str,
     model_files: List[str],
     queries_file: Optional[str] = None,
     filter_query: Optional[str] = None,
     model_names: Optional[List[str]] = None,
     gt_column: str = 'GT',
-    score_column: str = 'score',
+    score_column: Union[str, List[str]] = 'score',
     pos_query: Optional[str] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """Load test data and model predictions, optionally filtered by queries.
+    """Prepare test data and model predictions for evaluation, optionally filtered by queries.
     
     Args:
         test_file: Path to test set CSV file with ground truth
@@ -90,7 +114,7 @@ def load_models(
         filter_query: Optional initial filter to apply to test set
         model_names: Optional list of names for models (defaults to filenames)
         gt_column: Name of ground truth column in test file
-        score_column: Name of score column in model files
+        score_column: Name(s) of score column(s) in model files. If a list, scores will be summed.
         pos_query: Optional query to define positive cases (samples matching this query will have GT=1)
         
     Returns:
@@ -101,8 +125,10 @@ def load_models(
     """
     if model_names is None:
         model_names = [Path(mf).stem for mf in model_files]
-    model_files = dict(zip(model_names, model_files))
-    test_df = pd.read_csv(test_file).set_index("id")
+    model_files_dict = dict(zip(model_names, model_files))
+    
+    # Load the raw data
+    test_df, model_dfs = load_testset_and_scores(test_file, model_files_dict)
     total_samples = len(test_df)
 
     # Create standardized ground truth column
@@ -125,21 +151,24 @@ def load_models(
     else:
         filtered_samples = total_samples
 
-    # Set index to 'id' and rename score column
-    model_dfs = {}
-    for model_name, model_file in model_files.items():
-        model_df = pd.read_csv(model_file).set_index("id")
-        if score_column not in model_df.columns:
-            raise ValueError(f"Score column '{score_column}' not found in model file {model_file}")
-        model_df = model_df.rename(columns={score_column: SCORE_COL})
-        model_dfs[model_name] = model_df
+    # Handle score columns and create SCORE_COL
+    for model_name, model_df in model_dfs.items():
+        # Handle score_column as either str or list
+        if isinstance(score_column, str):
+            score_column = [score_column]
+        # List case - check if all columns exist
+        missing_cols = [col for col in score_column if col not in model_df.columns]
+        if missing_cols:
+            raise ValueError(f"Score columns {missing_cols} not found in model file {model_files_dict[model_name]}")
+        
+        # Sum the specified columns to create SCORE_COL
+        model_df[SCORE_COL] = model_df[score_column].sum(axis=1)
 
     validate_data(test_df, model_dfs)
 
     # Merge each model with test_df
     models_df = test_df
     for model_name, model_df in model_dfs.items():
-        # No need to clean columns anymore
         models_df = join_with_namespace(models_df, model_df, right_ns=model_name, left_ns="test")
 
     valid_queries = get_valid_queries(queries_file, test_df)
@@ -150,7 +179,8 @@ def load_models(
         "filter_query": filter_query,
         "pos_query": pos_query,
         "gt_column": gt_column,
-        "model_paths": {name: path for name, path in model_files.items()}
+        "model_paths": model_files_dict,
+        "score_columns": score_column if isinstance(score_column, list) else [score_column]
     }
     return models_df, valid_queries, info_dict
 

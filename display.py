@@ -20,6 +20,10 @@ def display_dataset_info(info_dict):
         else:
             info_text += f"**Ground Truth Column:** `{info_dict['gt_column']}`<br>"
         
+        # Show score columns if in multi-class mode
+        if 'score_columns' in info_dict and len(info_dict['score_columns']) > 1:
+            info_text += f"**Score Columns (Positive Class):** {', '.join(f'`{col}`' for col in info_dict['score_columns'])}<br>"
+        
         info_text += "**Models:**<br>"
         for name, path in info_dict['model_paths'].items():
             info_text += f"- {name}: `{path}`<br>"
