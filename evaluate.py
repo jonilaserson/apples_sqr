@@ -33,21 +33,17 @@ def main():
     parser.add_argument('-m', '--models', required=True, nargs='+', help='Paths to model prediction CSV files')
     parser.add_argument('-q', '--queries', help='Path to queries text file')
     parser.add_argument('-f', '--filter', help='Initial filter query to apply to test set')
-    parser.add_argument('--pos_query', help='Query to define positive cases (samples matching this query will have GT=1)')
     parser.add_argument('--metrics', default='auc', help='Comma-separated list of metrics to compute (auc,precision,recall,accuracy,f1,max_f1)')
     parser.add_argument('--thresh', type=float, nargs='+', help='Threshold(s) for binary classification metrics. One value or one per model.')
     parser.add_argument('--flatten', action='store_true', help='Flatten the result table instead of showing separate tables per metric')
     parser.add_argument('--gui', action='store_true', help='Launch interactive GUI for threshold tuning')
     parser.add_argument('--gt_column', default='GT', help='Name of the ground truth column in test set (default: GT)')
-    parser.add_argument('--score_column', default='score', help='Name of the score column in model files (default: score)')
-    parser.add_argument('--score_columns', nargs='+', help='For multi-class: names of score columns in model files to sum for positive class score')
+    parser.add_argument('--score_col', help='Name of the score column in model files (default: None, will infer from pos_classes)')
+    parser.add_argument('--pos_classes', nargs='+', default=['1'], help='List of classes to consider as positive (default: ["1"])')
 
     args = parser.parse_args()
 
     metrics = [m.strip().lower() for m in args.metrics.split(',')]
-
-    # Determine which score column parameter to use
-    score_col_param = args.score_columns if args.score_columns else args.score_column
 
     # Load the data once
     models_df, queries, info_dict = prepare_tables(
@@ -56,8 +52,8 @@ def main():
         args.queries,
         filter_query=args.filter,
         gt_column=args.gt_column,
-        score_column=score_col_param,
-        pos_query=args.pos_query
+        score_column=args.score_col,
+        pos_classes=args.pos_classes
     )
 
     # Validate thresholds
@@ -95,50 +91,31 @@ def main():
 
         st.title("Interactive Model Evaluator")
 
-        # Add collapsible info box
-        display_dataset_info(info_dict)
-
-        # Get available columns from the first model file for multi-class selection
-        try:
-            first_model_path = info_dict["model_paths"][model_names[0]]
-            first_model_df = pd.read_csv(first_model_path)
-            # Exclude id and any columns starting with underscore
-            model_class_cols = [col for col in first_model_df.columns 
-                              if col != 'id' and not col.startswith('_')]
-        except Exception as e:
-            st.warning(f"Could not read model columns for multi-class detection: {e}")
-            model_class_cols = []
-        
-        # Multi-class selection UI if multiple score columns are available
-        selected_score_columns = None
-        if len(model_class_cols) > 1:
+        # Multi-class selection UI if multiple classes are available
+        if len(info_dict['available_classes']) > 1:
             st.sidebar.header("Class Selection")
-            multi_class_mode = st.sidebar.checkbox(
-                "Multi-class Mode", 
-                value=isinstance(score_col_param, list),
-                help="Enable to select which classes to consider as positive"
+            selected_pos_classes = st.sidebar.multiselect(
+                "Select classes to consider as positive:",
+                options=info_dict['available_classes'],
+                default=info_dict['pos_classes'],
+                help="Scores for these classes will be summed to determine the positive class score"
             )
             
-            if multi_class_mode:
-                selected_score_columns = st.sidebar.multiselect(
-                    "Select classes to consider as positive:",
-                    options=model_class_cols,
-                    default=info_dict.get("score_columns", []),
-                    help="Scores for these classes will be summed to determine the positive class score"
+            # Recalculate if class selection changed
+            if selected_pos_classes and selected_pos_classes != info_dict['pos_classes']:
+                # Reload with new class selection
+                models_df, queries, info_dict = prepare_tables(
+                    args.test,
+                    args.models,
+                    args.queries,
+                    filter_query=args.filter,
+                    gt_column=args.gt_column,
+                    score_column=args.score_col,
+                    pos_classes=selected_pos_classes
                 )
-                
-                # Recalculate if multi-class selection changed
-                if selected_score_columns and selected_score_columns != info_dict.get("score_columns", []):
-                    # Reload with new score columns selection
-                    models_df, queries, info_dict = prepare_tables(
-                        args.test,
-                        args.models,
-                        args.queries,
-                        filter_query=args.filter,
-                        gt_column=args.gt_column,
-                        score_column=selected_score_columns,
-                        pos_query=args.pos_query
-                    )
+        
+        # Add collapsible info box - moved here to show updated info_dict
+        display_dataset_info(info_dict)
 
         threshold_inputs = []
         st.sidebar.header("Thresholds per model")

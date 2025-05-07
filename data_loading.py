@@ -102,8 +102,8 @@ def prepare_tables(
     filter_query: Optional[str] = None,
     model_names: Optional[List[str]] = None,
     gt_column: str = 'GT',
-    score_column: Union[str, List[str]] = 'score',
-    pos_query: Optional[str] = None
+    score_column: Optional[str] = None,
+    pos_classes: List[str] = ['1']
 ) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Prepare test data and model predictions for evaluation, optionally filtered by queries.
     
@@ -114,8 +114,8 @@ def prepare_tables(
         filter_query: Optional initial filter to apply to test set
         model_names: Optional list of names for models (defaults to filenames)
         gt_column: Name of ground truth column in test file
-        score_column: Name(s) of score column(s) in model files. If a list, scores will be summed.
-        pos_query: Optional query to define positive cases (samples matching this query will have GT=1)
+        score_column: Name of score column in model files. If None, will use pos_classes.
+        pos_classes: List of classes to consider as positive (default: ["1"])
         
     Returns:
         Tuple of:
@@ -135,11 +135,13 @@ def prepare_tables(
     if gt_column not in test_df.columns:
         raise ValueError(f"Ground truth column '{gt_column}' not found in test file")
     
-    # If pos_query is provided, use it to define ground truth
-    if pos_query is not None:
-        test_df[GT_COL] = test_df.eval(pos_query).astype(int)
-    else:
-        test_df[GT_COL] = test_df[gt_column]
+    # Convert ground truth to binary (0/1)
+    if pd.api.types.is_numeric_dtype(test_df[gt_column]):        # For numeric ground truth, check if values are in pos_classes
+        try:
+            pos_classes = [int(c) for c in pos_classes]
+        except ValueError:
+            raise ValueError(f"Ground truth column '{gt_column}' is numeric but pos_classes contains non-numeric values: {pos_classes}")
+    test_df[GT_COL] = test_df[gt_column].isin(pos_classes).astype(int)
 
     if filter_query:
         original_size = len(test_df)
@@ -151,18 +153,25 @@ def prepare_tables(
     else:
         filtered_samples = total_samples
 
+    # Get available classes from the test set's ground truth column
+    available_classes = list(map(str, sorted(test_df[gt_column].unique().tolist())))
+
+    # Handle score columns
+    if score_column is None:
+        # If score_column not specified, use all pos_classes
+        score_columns = pos_classes
+    else:
+        score_columns = [score_column]
+
     # Handle score columns and create SCORE_COL
     for model_name, model_df in model_dfs.items():
-        # Handle score_column as either str or list
-        if isinstance(score_column, str):
-            score_column = [score_column]
-        # List case - check if all columns exist
-        missing_cols = [col for col in score_column if col not in model_df.columns]
+        # Check if all columns exist
+        missing_cols = [col for col in score_columns if col not in model_df.columns]
         if missing_cols:
             raise ValueError(f"Score columns {missing_cols} not found in model file {model_files_dict[model_name]}")
         
         # Sum the specified columns to create SCORE_COL
-        model_df[SCORE_COL] = model_df[score_column].sum(axis=1)
+        model_df[SCORE_COL] = model_df[score_columns].sum(axis=1)
 
     validate_data(test_df, model_dfs)
 
@@ -177,11 +186,16 @@ def prepare_tables(
         "total_samples": total_samples,
         "filtered_samples": filtered_samples,
         "filter_query": filter_query,
-        "pos_query": pos_query,
         "gt_column": gt_column,
         "model_paths": model_files_dict,
-        "score_columns": score_column if isinstance(score_column, list) else [score_column]
+        "available_classes": available_classes,
+        "pos_classes": pos_classes
     }
+    
+    # Only include score_column if it was explicitly provided
+    if score_column is not None:
+        info_dict["score_column"] = score_column
+        
     return models_df, valid_queries, info_dict
 
 def validate_data(test_df: pd.DataFrame, model_dfs: Dict[str, pd.DataFrame]) -> None:

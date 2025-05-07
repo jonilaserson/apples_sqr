@@ -15,14 +15,19 @@ def display_dataset_info(info_dict):
         if info_dict['filter_query']:
             info_text += f"**Filter:** `{info_dict['filter_query']}` ({info_dict['filtered_samples']:,} samples after filtering)<br>"
         
-        if info_dict['pos_query']:
-            info_text += f"**Positive Cases:** `{info_dict['pos_query']}`<br>"
-        else:
-            info_text += f"**Ground Truth Column:** `{info_dict['gt_column']}`<br>"
+        info_text += f"**Ground Truth Column:** `{info_dict['gt_column']}`<br>"
         
-        # Show score columns if in multi-class mode
-        if 'score_columns' in info_dict and len(info_dict['score_columns']) > 1:
-            info_text += f"**Score Columns (Positive Class):** {', '.join(f'`{col}`' for col in info_dict['score_columns'])}<br>"
+        # Show available classes
+        if 'available_classes' in info_dict:
+            info_text += f"**Available Classes:** {', '.join(f'`{col}`' for col in info_dict['available_classes'])}<br>"
+        
+        # Show positive classes
+        if 'pos_classes' in info_dict:
+            info_text += f"**Positive Classes:** {', '.join(f'`{col}`' for col in info_dict['pos_classes'])}<br>"
+        
+        # Show score column only if explicitly provided
+        if 'score_column' in info_dict:
+            info_text += f"**Score Column:** `{info_dict['score_column']}`<br>"
         
         info_text += "**Models:**<br>"
         for name, path in info_dict['model_paths'].items():
