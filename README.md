@@ -1,23 +1,20 @@
 # Model Evaluation Tool
 
-A flexible command-line tool for evaluating and comparing binary classifiers. This tool supports multiple evaluation metrics, subset analysis through queries, and includes both CLI and interactive GUI modes.
+A tool for evaluating binary classifiers on test data, with support for multi-class scenarios.
 
 ## Features
 
-- Multiple metric support (AUC-ROC, precision, recall, accuracy, F1, max F1)
-- Compare multiple models side by side
-- Filter and analyze model performance on data subsets using custom queries
-- Interactive GUI mode with threshold tuning and visualization
-- ROC and Precision-Recall curve plotting
-- Formatted table output for easy comparison
+- Evaluate binary classifiers on test data
+- Support for multi-class scenarios
+- Interactive GUI for threshold tuning
+- Various metrics: AUC, precision, recall, accuracy, F1, max F1
+- Query-based evaluation
+- Support for filtering test data
 
 ## Installation
 
-1. Clone the repository
-2. Create and activate a virtual environment
-3. Install dependencies:
 ```bash
-uv pip install pandas numpy scikit-learn matplotlib tabulate streamlit
+pip install -r requirements.txt
 ```
 
 ## Usage
@@ -25,92 +22,131 @@ uv pip install pandas numpy scikit-learn matplotlib tabulate streamlit
 ### Basic Usage
 
 ```bash
-python evaluate.py -t <test_file> -m <model1_file> <model2_file> [options]
-```
-
-### Required Arguments
-
-- `-t, --test`: Path to test set CSV file with ground truth
-- `-m, --models`: Paths to model prediction CSV files (one or more)
-
-### Optional Arguments
-
-- `-q, --queries`: Path to text file containing subset queries
-- `-f, --filter`: Initial filter query to apply to test set
-- `--metrics`: Comma-separated list of metrics (default: 'auc')
-  - Available metrics: auc, precision, recall, accuracy, f1, max_f1
-- `--thresh`: Threshold(s) for binary classification (default: 0.5)
-- `--flatten`: Flatten the result table
-- `--gui`: Launch interactive GUI for threshold tuning
-- `--gt_column`: Name of ground truth column (default: 'GT')
-- `--score_column`: Name of score column (default: 'score')
-
-### Input File Formats
-
-1. Test file (CSV):
-   - Must have an 'id' column
-   - Must have a ground truth column (default name: 'GT')
-
-2. Model files (CSV):
-   - Must have an 'id' column matching test file
-   - Must have a score column (default name: 'score')
-
-3. Queries file (TXT):
-   - One query per line
-   - Uses pandas query syntax
-   - Example:
-     ```
-     feature1 > 0
-     feature2 < 2
-     category == 'A'
-     ```
-
-### Examples
-
-1. Basic evaluation with default metrics:
-```bash
 python evaluate.py -t test_set.csv -m model1.csv model2.csv
 ```
 
-2. Multiple metrics and custom thresholds:
+### Command Line Arguments
+
+- `-t, --test`: Path to test set CSV file with ground truth (required)
+- `-m, --models`: Paths to model prediction CSV files (required, can specify multiple)
+- `-q, --queries`: Path to queries text file
+- `-f, --filter`: Initial filter query to apply to test set
+- `--metrics`: Comma-separated list of metrics to compute (default: 'auc')
+  - Available metrics: auc, precision, recall, accuracy, f1, max_f1
+- `--thresh`: Threshold(s) for binary classification metrics. One value or one per model.
+- `--flatten`: Flatten the result table instead of showing separate tables per metric
+- `--gui`: Launch interactive GUI for threshold tuning
+- `--gt_column`: Name of the ground truth column in test set (default: 'GT')
+- `--score_col`: Name of the score column in model files (default: None, will infer from pos_classes)
+- `--pos_classes`: List of classes to consider as positive (default: ['1'])
+
+### Multi-class Support
+
+The tool supports multi-class scenarios in two ways:
+
+1. **Explicit Score Column**: Use `--score_col` to specify a single score column to use.
+
+2. **Positive Classes**: Use `--pos_classes` to specify which classes should be considered positive. If `--score_col` is not specified, the tool will automatically sum the scores of all specified positive classes.
+
+Example:
 ```bash
-python evaluate.py -t test_set.csv -m model1.csv model2.csv --metrics auc,precision,recall,f1 --thresh 0.7
+# Use a specific score column
+python evaluate.py -t test_set.csv -m model1.csv --score_col class1
+
+# Use multiple positive classes (scores will be summed)
+python evaluate.py -t test_set.csv -m model1.csv --pos_classes class1 class2 class3
 ```
 
-3. Using queries file and initial filter:
+### Interactive GUI
+
+Launch the interactive GUI with the `--gui` flag:
+
 ```bash
-python evaluate.py -t test_set.csv -m model1.csv model2.csv -q queries.txt -f "score > 0.1"
+python evaluate.py -t test_set.csv -m model1.csv --gui
 ```
 
-4. Launch interactive GUI:
-```bash
-python evaluate.py -t test_set.csv -m model1.csv model2.csv --gui
-```
-
-## GUI Mode Features
-
-The interactive GUI mode (--gui) provides:
-- Dynamic threshold adjustment
-- Real-time metric updates
-- ROC and Precision-Recall curve visualization
-- Query selection and filtering
+The GUI provides:
+- Interactive threshold tuning
+- ROC and PR curves
 - Multiple view options for results
+- Class selection for multi-class scenarios
+- Dataset information display
 
-## Output Format
+### Input File Formats
+
+#### Test Set CSV
+- Must contain an 'id' column
+- Must contain the ground truth column (default: 'GT')
+- Ground truth can be numeric or categorical
+
+#### Model Prediction CSV
+- Must contain an 'id' column
+- Must contain score column(s) for each class
+- For multi-class, each class should have its own score column
+
+### Output
 
 The tool provides:
-- Metric values in formatted tables
-- Sample distribution for each query
-- Performance comparison across models
-- Visual plots (in GUI mode)
+- Performance metrics for each model
+- ROC and PR curves
+- Query-based evaluation results
+- Interactive visualization in GUI mode
 
-Example output format:
+#### Example Text Output
+
 ```
+Initial filter applied: 'feature1 > 0'
+
 Evaluation results for metric "auc":
 |                                    |   model1 |   model2 |
 |:-----------------------------------|---------:|---------:|
 | [ 71: 29] 100.0%  all              |   0.9131 |   0.7028 |
 | [ 33: 13]  46.0%  feature1 > 0     |   0.8485 |   0.7413 |
+| [ 12:  8]  20.0%  feature2 < 2     |   0.9123 |   0.6543 |
+
+Evaluation results for metric "precision":
+|                                    |   model1 |   model2 |
+|:-----------------------------------|---------:|---------:|
+| [ 71: 29] 100.0%  all              |   0.8231 |   0.6028 |
+| [ 33: 13]  46.0%  feature1 > 0     |   0.7785 |   0.6413 |
+| [ 12:  8]  20.0%  feature2 < 2     |   0.8923 |   0.5543 |
+
+Total evaluation time: 0.45 seconds
 ```
 
-The `[neg:pos]` prefix shows the distribution of negative and positive samples for each query.
+The output format includes:
+- Query statistics in the format `[neg:pos] percentage query` where:
+  - `neg:pos` shows the count of negative and positive samples
+  - `percentage` shows what percentage of total samples this query represents
+  - `query` is the actual query string
+- Metric values for each model
+- Total evaluation time
+
+## Examples
+
+### Basic Binary Classification
+```bash
+python evaluate.py -t test_set.csv -m model1.csv --metrics auc,precision,recall
+```
+
+### Multi-class with Specific Score Column
+```bash
+python evaluate.py -t test_set.csv -m model1.csv --score_col class1
+```
+
+### Multi-class with Multiple Positive Classes
+```bash
+python evaluate.py -t test_set.csv -m model1.csv --pos_classes class1 class2
+```
+
+### Interactive GUI with Filter
+```bash
+python evaluate.py -t test_set.csv -m model1.csv --gui --filter "feature1 > 0"
+```
+
+## Notes
+
+- When using `--pos_classes` without `--score_col`, the tool will automatically sum the scores of all specified positive classes
+- The ground truth column is converted to binary (0/1) where 1 indicates membership in the positive classes
+- Available classes are determined from the unique values in the ground truth column
+- The GUI allows dynamic selection of positive classes and threshold tuning
