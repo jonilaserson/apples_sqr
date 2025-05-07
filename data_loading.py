@@ -78,8 +78,9 @@ def load_models(
     filter_query: Optional[str] = None,
     model_names: Optional[List[str]] = None,
     gt_column: str = 'GT',
-    score_column: str = 'score'
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    score_column: str = 'score',
+    pos_query: Optional[str] = None
+) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Load test data and model predictions, optionally filtered by queries.
     
     Args:
@@ -90,21 +91,29 @@ def load_models(
         model_names: Optional list of names for models (defaults to filenames)
         gt_column: Name of ground truth column in test file
         score_column: Name of score column in model files
+        pos_query: Optional query to define positive cases (samples matching this query will have GT=1)
         
     Returns:
         Tuple of:
             - DataFrame with test data and model predictions
             - Boolean DataFrame of valid queries
+            - Dictionary containing information about the dataset
     """
     if model_names is None:
         model_names = [Path(mf).stem for mf in model_files]
     model_files = dict(zip(model_names, model_files))
     test_df = pd.read_csv(test_file).set_index("id")
+    total_samples = len(test_df)
 
     # Create standardized ground truth column
     if gt_column not in test_df.columns:
         raise ValueError(f"Ground truth column '{gt_column}' not found in test file")
-    test_df[GT_COL] = test_df[gt_column]
+    
+    # If pos_query is provided, use it to define ground truth
+    if pos_query is not None:
+        test_df[GT_COL] = test_df.eval(pos_query).astype(int)
+    else:
+        test_df[GT_COL] = test_df[gt_column]
 
     if filter_query:
         original_size = len(test_df)
@@ -112,6 +121,9 @@ def load_models(
         filtered_size = len(test_df)
         print(f"Applied filter: '{filter_query}'")
         print(f"Filtered test set from {original_size} to {filtered_size} samples ({filtered_size/original_size*100:.1f}%)")
+        filtered_samples = filtered_size
+    else:
+        filtered_samples = total_samples
 
     # Set index to 'id' and rename score column
     model_dfs = {}
@@ -131,7 +143,16 @@ def load_models(
         models_df = join_with_namespace(models_df, model_df, right_ns=model_name, left_ns="test")
 
     valid_queries = get_valid_queries(queries_file, test_df)
-    return models_df, valid_queries
+    info_dict = {
+        "test_file": test_file,
+        "total_samples": total_samples,
+        "filtered_samples": filtered_samples,
+        "filter_query": filter_query,
+        "pos_query": pos_query,
+        "gt_column": gt_column,
+        "model_paths": {name: path for name, path in model_files.items()}
+    }
+    return models_df, valid_queries, info_dict
 
 def validate_data(test_df: pd.DataFrame, model_dfs: Dict[str, pd.DataFrame]) -> None:
     """Validate test and model data compatibility.

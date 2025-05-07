@@ -13,7 +13,7 @@ except ImportError:
     
 from data_loading import load_models
 from metrics import compute_metrics, raw_results_to_final_df
-from display import display_results, transform_df_for_model_view, setup_streamlit_display
+from display import display_results, transform_df_for_model_view, setup_streamlit_display, display_dataset_info
 from common import get_meta_columns_in_order
 
 
@@ -33,6 +33,7 @@ def main():
     parser.add_argument('-m', '--models', required=True, nargs='+', help='Paths to model prediction CSV files')
     parser.add_argument('-q', '--queries', help='Path to queries text file')
     parser.add_argument('-f', '--filter', help='Initial filter query to apply to test set')
+    parser.add_argument('--pos_query', help='Query to define positive cases (samples matching this query will have GT=1)')
     parser.add_argument('--metrics', default='auc', help='Comma-separated list of metrics to compute (auc,precision,recall,accuracy,f1,max_f1)')
     parser.add_argument('--thresh', type=float, nargs='+', help='Threshold(s) for binary classification metrics. One value or one per model.')
     parser.add_argument('--flatten', action='store_true', help='Flatten the result table instead of showing separate tables per metric')
@@ -46,13 +47,14 @@ def main():
 
 
     # Load the data once
-    models_df, queries = load_models(
+    models_df, queries, info_dict = load_models(
         args.test,
         args.models,
         args.queries,
         filter_query=args.filter,
         gt_column=args.gt_column,
-        score_column=args.score_column
+        score_column=args.score_column,
+        pos_query=args.pos_query
     )
 
     # Validate thresholds
@@ -90,6 +92,9 @@ def main():
 
         st.title("Interactive Model Evaluator")
 
+        # Add collapsible info box
+        display_dataset_info(info_dict)
+
         threshold_inputs = []
         st.sidebar.header("Thresholds per model")
         for i, model_name in enumerate(model_names):
@@ -108,7 +113,7 @@ def main():
         results = raw_results_to_final_df(raw_results, model_names, metrics, queries.columns)
 
         query_labels = results.index.tolist()
-        table_container, plot_container = st.columns([3, 5])
+        table_container, plot_container = st.columns([4, 5])
 
         # Place the dropdown and radio on the same row
         col1, col2 = st.columns([4, 2])

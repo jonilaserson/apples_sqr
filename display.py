@@ -1,6 +1,31 @@
 import pandas as pd
 from plots import plot_curves
 
+def display_dataset_info(info_dict):
+    """Display dataset information in a collapsible Streamlit expander.
+    
+    Args:
+        info_dict: Dictionary containing all dataset information
+    """
+    import streamlit as st
+    
+    with st.expander("Dataset Information", expanded=False):
+        info_text = f"**Test Set:** {info_dict['test_file']} ({info_dict['total_samples']:,} samples)<br>"
+        
+        if info_dict['filter_query']:
+            info_text += f"**Filter:** `{info_dict['filter_query']}` ({info_dict['filtered_samples']:,} samples after filtering)<br>"
+        
+        if info_dict['pos_query']:
+            info_text += f"**Positive Cases:** `{info_dict['pos_query']}`<br>"
+        else:
+            info_text += f"**Ground Truth Column:** `{info_dict['gt_column']}`<br>"
+        
+        info_text += "**Models:**<br>"
+        for name, path in info_dict['model_paths'].items():
+            info_text += f"- {name}: `{path}`<br>"
+        
+        st.markdown(info_text, unsafe_allow_html=True)
+
 def display_results(results, metrics, flatten=False):
     if results.empty:
         print("No results to display.")
@@ -48,7 +73,7 @@ def setup_streamlit_display():
         # Get the actual query string from the label (extracting from formatted label)
         colors = plt.cm.tab10.colors
 
-        st.markdown(f"### ROC and Precision-Recall Curves")
+        #st.markdown(f"### Plots")
 
         col1, col2 = st.columns(2)
 
