@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any
-from sklearn.metrics import roc_auc_score, precision_score, recall_score, accuracy_score, f1_score
+from sklearn.metrics import roc_auc_score, precision_score, recall_score, accuracy_score, f1_score, roc_curve, precision_recall_curve
 from common import GT_COL, SCORE_COL, get_meta_columns_in_order, cache_data
 
 # Type definitions for metric functions and results
@@ -22,7 +22,7 @@ def compute_max_f1(y_true: np.ndarray, y_score: np.ndarray) -> Optional[float]:
     thresholds = np.unique(y_score)
     return max((f1_score(y_true, (y_score >= t).astype(int)) for t in thresholds), default=None)
 
-@cache_data
+
 def compute_confusion_elements(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
     """Compute confusion matrix elements and derived metrics.
     
@@ -45,18 +45,41 @@ def compute_confusion_elements(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[s
         'precision': tp / (tp + fp) if (tp + fp) > 0 else 0,
         'recall': tp / (tp + fn) if (tp + fn) > 0 else 0,
         'specificity': tn / (tn + fp) if (tn + fp) > 0 else 0,
+        'fpr': fp / (tn + fp) if (tn + fp) > 0 else 0,
         'npv': tn / (tn + fn) if (tn + fn) > 0 else 0,
         'accuracy': (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0,
         'f1': 2 * tp / (2 * tp + fp + fn) if (2 * tp + fp + fn) > 0 else 0,
     }
 
+def compute_plot_metrics(y_true: np.ndarray, y_score: np.ndarray) -> Dict[str, np.ndarray]:
+    """Compute metrics needed for plotting ROC and PR curves.
+    
+    Args:
+        y_true: Ground truth labels
+        y_score: Predicted scores
+        
+    Returns:
+        Dictionary containing:
+            - fpr, tpr, roc_thresh: for ROC curve
+            - precision, recall, pr_thresh: for PR curve
+    """
+    fpr, tpr, roc_thresh = roc_curve(y_true, y_score)
+    precision, recall, pr_thresh = precision_recall_curve(y_true, y_score)
+    return {
+        'fpr': fpr,
+        'tpr': tpr,
+        'precision': precision[::-1],
+        'recall': recall[::-1],
+    }
+
 # Metric packages definition
 METRIC_PACKAGES: Dict[str, MetricPackage] = {
     'raw': {
-        'auc': lambda y_true, y_score: roc_auc_score(y_true, y_score),
-        'max_f1': lambda y_true, y_score: compute_max_f1(y_true, y_score),
+        'auc': roc_auc_score,
+        'max_f1': compute_max_f1,
     },
-    'thresh': lambda y_true, y_pred: compute_confusion_elements(y_true, y_pred),
+    'thresh': compute_confusion_elements,
+    'plots': compute_plot_metrics
 }
 
 @cache_data
@@ -132,33 +155,11 @@ def compute_metrics(
                 package_results = compute_model_metrics(
                     subset_df, model_name, threshold, package_name
                 )
-                
+
                 # Store the entire package results
                 raw_results.setdefault(package_name, {}).setdefault(model_name, {})[query_label] = package_results
 
     return raw_results
-
-def apply_thresholds_and_evaluate(
-    models_df: pd.DataFrame,
-    queries_bool_df: pd.DataFrame,
-    metrics: List[str],
-    thresholds: Optional[List[float]]
-) -> pd.DataFrame:
-    """Apply thresholds and compute metrics for all models and queries.
-    
-    Args:
-        models_df: DataFrame with model predictions and ground truth
-        queries_bool_df: Boolean DataFrame (samples x queries)
-        metrics: List of metric names to compute
-        thresholds: Optional list of thresholds for each model
-        
-    Returns:
-        DataFrame with metrics for each model and query
-    """
-    raw_results = compute_metrics(models_df, queries_bool_df, thresholds=thresholds)
-    model_names = get_meta_columns_in_order(models_df)[1:]
-    final_df = raw_results_to_final_df(raw_results, model_names, metrics, queries_bool_df.columns)
-    return final_df
 
 def raw_results_to_final_df(
     raw_results: RawResults,
@@ -181,11 +182,12 @@ def raw_results_to_final_df(
     final_df = pd.DataFrame(index=query_labels, columns=columns)
 
     for package_name, package_data in raw_results.items():
+        if package_name == 'plots':
+            continue
         for model_name, model_data in package_data.items():
             for query_label in query_labels:
-                if query_label in model_data:
-                    for metric_name, value in model_data[query_label].items():
-                        if metric_name in metrics:  # Only include requested metrics
-                            final_df.loc[query_label, (metric_name, model_name)] = value
+                for metric_name, value in model_data[query_label].items():
+                    if metric_name in metrics:  # Only include requested metrics
+                        final_df.loc[query_label, (metric_name, model_name)] = value
 
     return final_df 

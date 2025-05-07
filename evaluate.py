@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import time
-import sys
-import logging
-from typing import Optional
+
 
 # Import and configure Streamlit first if available
 try:
@@ -14,22 +12,10 @@ except ImportError:
     st = None
     
 from data_loading import load_models
-from metrics import apply_thresholds_and_evaluate#, METRIC_FUNCTIONS, THRESH_METRICS_FUNCTIONS
+from metrics import compute_metrics, raw_results_to_final_df
 from display import display_results, transform_df_for_model_view, setup_streamlit_display
 from common import get_meta_columns_in_order
 
-def print_data_summary(models_df: pd.DataFrame, queries_bool_df: pd.DataFrame, filter_query: Optional[str] = None) -> None:
-    """Print summary of loaded data."""
-    n_samples = len(models_df)
-    n_models = len(get_meta_columns_in_order(models_df)[1:])
-    n_queries = len(queries_bool_df.columns)
-    
-    print(f"\nData Summary:")
-    if filter_query:
-        print(f"  Filter: '{filter_query}'")
-    print(f"  Samples: {n_samples}")
-    print(f"  Models: {n_models}")
-    print(f"  Queries: {n_queries}")
 
 def validate_thresholds(thresholds: list[float], n_models: int) -> None:
     """Validate that number of thresholds matches number of models."""
@@ -57,13 +43,7 @@ def main():
     args = parser.parse_args()
 
     metrics = [m.strip().lower() for m in args.metrics.split(',')]
-    if False:
-        METRICS = dict(**METRIC_FUNCTIONS, **THRESH_METRICS_FUNCTIONS)
-        invalid_metrics = [m for m in metrics if m not in METRICS]
-        if invalid_metrics:
-            print(f"Error: Invalid metrics specified: {', '.join(invalid_metrics)}")
-            print(f"Available metrics: {', '.join((METRICS).keys())}")
-            return
+
 
     # Load the data once
     models_df, queries = load_models(
@@ -75,9 +55,6 @@ def main():
         score_column=args.score_column
     )
 
-    # Print data summary
-    print_data_summary(models_df, queries, args.filter)
-
     # Validate thresholds
     model_names = get_meta_columns_in_order(models_df)[1:]
     validate_thresholds(args.thresh, len(model_names))
@@ -88,7 +65,10 @@ def main():
         thresh_values = [0.5] * len(model_names)
 
     if not args.gui:
-        results = apply_thresholds_and_evaluate(models_df, queries, metrics, thresh_values)
+        # Compute all metrics
+        raw_results = compute_metrics(models_df, queries, thresholds=thresh_values, packages=("thresh", "raw", "plots"))
+        results = raw_results_to_final_df(raw_results, model_names, metrics, queries.columns)
+        
         if results is not None and not results.empty:
             if args.filter:
                 print(f"Initial filter applied: '{args.filter}'")
@@ -123,7 +103,9 @@ def main():
             )
             threshold_inputs.append(value)
 
-        results = apply_thresholds_and_evaluate(models_df, queries, metrics, threshold_inputs)
+        # Compute all metrics including plots
+        raw_results = compute_metrics(models_df, queries, thresholds=threshold_inputs, packages=("thresh", "raw", "plots"))
+        results = raw_results_to_final_df(raw_results, model_names, metrics, queries.columns)
 
         query_labels = results.index.tolist()
         table_container, plot_container = st.columns([3, 5])
@@ -148,7 +130,7 @@ def main():
         # Now plot, based on the *selected* query
         with plot_container:
             plot_roc_and_pr_curves_for_streamlit = setup_streamlit_display()
-            plot_roc_and_pr_curves_for_streamlit(models_df, threshold_inputs, query=selected_query_label)
+            plot_roc_and_pr_curves_for_streamlit(raw_results, threshold_inputs, query=selected_query_label)
 
         # Show the appropriate dataframe based on the selected view
         if view_toggle == "Model-indexed view":
