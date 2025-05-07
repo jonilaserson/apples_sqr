@@ -130,7 +130,7 @@ def main():
         # Now plot, based on the *selected* query
         with plot_container:
             plot_roc_and_pr_curves_for_streamlit = setup_streamlit_display()
-            plot_roc_and_pr_curves_for_streamlit(raw_results, threshold_inputs, query=selected_query_label)
+            plot_roc_and_pr_curves_for_streamlit(raw_results, query=selected_query_label)
 
         # Show the appropriate dataframe based on the selected view
         if view_toggle == "Model-indexed view":

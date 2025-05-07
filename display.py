@@ -44,7 +44,7 @@ def setup_streamlit_display():
     import streamlit as st
     import matplotlib.pyplot as plt
     
-    def plot_roc_and_pr_curves_for_streamlit(raw_results, thresholds, query='all'):
+    def plot_roc_and_pr_curves_for_streamlit(raw_results, query='all'):
         # Get the actual query string from the label (extracting from formatted label)
         colors = plt.cm.tab10.colors
 
@@ -54,12 +54,12 @@ def setup_streamlit_display():
 
         # --- ROC Plot ---
         with col1:
-            fig1, ax1 = plot_curves(raw_results, thresholds, colors, curve_type='roc', query_string=query)
+            fig1, ax1 = plot_curves(raw_results, colors, curve_type='roc', query_string=query)
             st.pyplot(fig1)
 
         # --- PR Plot ---
         with col2:
-            fig2, ax2 = plot_curves(raw_results, thresholds, colors, curve_type='pr', query_string=query)
+            fig2, ax2 = plot_curves(raw_results, colors, curve_type='pr', query_string=query)
             st.pyplot(fig2)
     
     return plot_roc_and_pr_curves_for_streamlit 

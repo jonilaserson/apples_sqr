@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.metrics import auc, average_precision_score
 
 
-def plot_curves(raw_results: dict, thresholds: list[float], colors: list, curve_type: str = 'roc', query_string: str = None, figsize: tuple = (5, 4)):
+def plot_curves(raw_results: dict, colors: list, curve_type: str = 'roc', query_string: str = None, figsize: tuple = (5, 4)):
     """
     Plot either ROC or PR curves for all models on the same axis.
 
@@ -20,37 +20,35 @@ def plot_curves(raw_results: dict, thresholds: list[float], colors: list, curve_
     fig, ax = None, None
 
     # Get the plots package data for the specific query
-    model_names = list(raw_results["plots"].keys())
+    model_names = list(raw_results.keys())
     #title = ':'.join([curve_type.upper(), query_string])
     
     for idx, model_name in enumerate(model_names):
-        threshold = thresholds[idx]
         color = colors[idx % len(colors)]
         #plot_metrics = plots_data[model_name][query_string]  # Access metrics for this model and query
 
         if curve_type == 'roc':
-            fig, ax = plot_roc_curve_for_model(raw_results, threshold, color, model_name, query=query_string, ax=ax, figsize=figsize)
+            fig, ax = plot_roc_curve_for_model(raw_results, color, model_name, query=query_string, ax=ax, figsize=figsize)
         elif curve_type == 'pr':
-            fig, ax = plot_pr_curve_for_model(raw_results, threshold, color, model_name, query=query_string, ax=ax, figsize=figsize)
+            fig, ax = plot_pr_curve_for_model(raw_results, color, model_name, query=query_string, ax=ax, figsize=figsize)
         else:
             raise ValueError(f"Unknown curve_type: {curve_type}")
 
     return fig, ax
 
-def plot_roc_curve_for_model(raw_results, threshold, color, model_name, query, ax=None, figsize=(4, 4)):
+def plot_roc_curve_for_model(raw_results, color, model_name, query, ax=None, figsize=(4, 4)):
     fig = None
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
-    plot_metrics = raw_results['plots'][model_name][query]  # Access metrics for this model and query
+    plot_metrics = raw_results[model_name]['plots'][query]  # Access metrics for this model and query
     fpr = plot_metrics['fpr']
     tpr = plot_metrics['tpr']
     model_auc = auc(fpr, tpr)
 
     ax.plot(fpr, tpr, label=f"{model_name} (AUC={model_auc:.2f})", color=color)
 
-    thresh_metrics = raw_results['thresh'][model_name][query]
-    # Find the closest threshold point using ROC thresholds
+    thresh_metrics = raw_results[model_name]['thresh'][query]
     operation_fpr = thresh_metrics['fpr']
     operation_tpr = thresh_metrics['recall']
     ax.plot(operation_fpr, operation_tpr, 'o', color=color)
@@ -66,12 +64,12 @@ def plot_roc_curve_for_model(raw_results, threshold, color, model_name, query, a
     ax.legend(loc='lower right', fontsize=8)
     return ax.figure, ax
 
-def plot_pr_curve_for_model(raw_results, threshold, color, model_name, query, ax=None, figsize=(4, 4)):
+def plot_pr_curve_for_model(raw_results, color, model_name, query, ax=None, figsize=(4, 4)):
     fig = None
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
-    plot_metrics = raw_results['plots'][model_name][query]  # Access metrics for this model and query
+    plot_metrics = raw_results[model_name]['plots'][query]  # Access metrics for this model and query
     precision = plot_metrics['precision']
     recall = plot_metrics['recall']
     # Calculate AP using precision and recall directly
@@ -80,7 +78,7 @@ def plot_pr_curve_for_model(raw_results, threshold, color, model_name, query, ax
     ax.plot(recall, precision, label=f"{model_name} (AP={ap:.2f})", color=color)
 
     # Find the closest threshold point using ROC thresholds since they are sorted
-    thresh_metrics = raw_results['thresh'][model_name][query]
+    thresh_metrics = raw_results[model_name]['thresh'][query]
     operation_precision = thresh_metrics['precision']
     operation_recall = thresh_metrics['recall']
     ax.plot(operation_recall, operation_precision, 'o', color=color)

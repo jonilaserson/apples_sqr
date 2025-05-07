@@ -84,85 +84,97 @@ METRIC_PACKAGES: Dict[str, MetricPackage] = {
 
 @cache_data
 def compute_model_metrics(
-    subset_df: pd.DataFrame,
+    models_df: pd.DataFrame,
     model_name: str,
     threshold: Optional[float] = None,
-    package: str = 'raw'
-) -> Dict[str, float]:
-    """Compute metrics for a specific model on a subset of data.
-    
-    Args:
-        subset_df: DataFrame containing the data for a specific query
-        model_name: Name of the model column to extract data from
-        threshold: Optional threshold to apply to predicted scores
-        package: Metric package to use ('raw' or 'thresh')
-    
-    Returns:
-        Dictionary of computed metrics
-    """
-    y_true = subset_df["test"][GT_COL]
-    y_pred = subset_df[model_name][SCORE_COL]
-    
-    if threshold is not None:
-        y_pred_binary = (y_pred >= threshold).astype(int)
-    else:
-        y_pred_binary = y_pred
-        
-    metric_package = METRIC_PACKAGES[package]
-    
-    if callable(metric_package):
-        # Package is a function that returns multiple metrics
-        return metric_package(y_true, y_pred_binary)
-    else:
-        # Package is a dictionary of metric functions
-        return {metric_name: func(y_true, y_pred) for metric_name, func in metric_package.items()}
-
-@cache_data
-def compute_metrics(
-    models_df: pd.DataFrame,
-    queries_bool_df: pd.DataFrame,
-    thresholds: Optional[List[float]] = None,
-    packages: Tuple[str, ...] = ("thresh", "raw")
-) -> RawResults:
-    """Compute metrics for all models and queries.
+    package: str = 'raw',
+    queries_bool_df: Optional[pd.DataFrame] = None
+) -> Dict[str, Dict[str, float]]:
+    """Compute metrics for a specific model across all queries.
     
     Args:
         models_df: DataFrame with model predictions and ground truth
-        queries_bool_df: Boolean DataFrame (samples x queries)
-        thresholds: Optional list of thresholds for each model
-        packages: Metric packages to compute
-        
+        model_name: Name of the model column to extract data from
+        threshold: Optional threshold to apply to predicted scores
+        package: Metric package to use ('raw' or 'thresh')
+        queries_bool_df: Optional boolean DataFrame (samples x queries). If None, computes metrics on entire dataset.
+    
     Returns:
-        Nested dictionary of results: {package: {model: {query: metrics}}}
+        Dictionary of metrics for each query: {query: {metric: value}}
     """
-    raw_results: RawResults = {}
-    model_names = get_meta_columns_in_order(models_df)[1:]
-
+    # If no queries provided, treat entire dataset as one query
+    if queries_bool_df is None:
+        queries_bool_df = pd.DataFrame({'all': [True] * len(models_df)})
+    
+    query_results = {}
     for query_label, query_mask in queries_bool_df.items():
         # Create subset_df for this query using boolean mask
         subset_df = models_df[query_mask]
         
-        for idx, model_name in enumerate(model_names):
-            if model_name == "test":
-                continue
-                
-            # Process each package
-            for package_name in packages:
-                # Determine threshold based on package name
-                threshold = thresholds[idx] if thresholds is not None and package_name.startswith('thresh') else None
-                
-                # Compute all metrics for this package
-                package_results = compute_model_metrics(
-                    subset_df, model_name, threshold, package_name
-                )
+        y_true = subset_df["test"][GT_COL]
+        y_pred = subset_df[model_name][SCORE_COL]
+        
+        if threshold is not None:
+            y_pred_binary = (y_pred >= threshold).astype(int)
+        else:
+            y_pred_binary = y_pred
+            
+        metric_package = METRIC_PACKAGES[package]
+        
+        if callable(metric_package):
+            # Package is a function that returns multiple metrics
+            query_results[query_label] = metric_package(y_true, y_pred_binary)
+        else:
+            # Package is a dictionary of metric functions
+            query_results[query_label] = {metric_name: func(y_true, y_pred) for metric_name, func in metric_package.items()}
+    
+    return query_results
 
-                # Store the entire package results
-                raw_results.setdefault(package_name, {}).setdefault(model_name, {})[query_label] = package_results
+@cache_data
+def compute_metrics(
+    models_df: pd.DataFrame,
+    queries_bool_df: Optional[pd.DataFrame] = None,
+    thresholds: Optional[List[float]] = None,
+    packages: Tuple[str, ...] = ("thresh", "raw")
+) -> Dict[str, Dict[str, Dict[str, Dict[str, float]]]]:
+    """Compute metrics for all models and queries.
+    
+    Args:
+        models_df: DataFrame with model predictions and ground truth
+        queries_bool_df: Optional boolean DataFrame (samples x queries). If None, computes metrics on entire dataset.
+        thresholds: Optional list of thresholds for each model
+        packages: Metric packages to compute
+        
+    Returns:
+        Nested dictionary of results: {model: {package: {query: metrics}}}
+    """
+    raw_results: Dict[str, Dict[str, Dict[str, Dict[str, float]]]] = {}
+    model_names = get_meta_columns_in_order(models_df)[1:]
+
+    for idx, model_name in enumerate(model_names):
+        if model_name == "test":
+            continue
+            
+        # Initialize model entry
+        raw_results[model_name] = {}
+            
+        # Process each package
+        for package_name in packages:
+            # Determine threshold based on package name
+            threshold = thresholds[idx] if thresholds is not None and package_name.startswith('thresh') else None
+            
+            # Compute metrics for all queries
+            package_results = compute_model_metrics(
+                models_df, model_name, threshold, package_name, queries_bool_df
+            )
+            
+            # Store the entire package results
+            raw_results[model_name][package_name] = package_results
 
     return raw_results
 
 def raw_results_to_final_df(
-    raw_results: RawResults,
+    raw_results: Dict[str, Dict[str, Dict[str, Dict[str, float]]]],
     model_names: List[str],
     metrics: List[str],
     query_labels: pd.Index
@@ -170,7 +182,7 @@ def raw_results_to_final_df(
     """Convert raw results to a final DataFrame.
     
     Args:
-        raw_results: Nested dictionary of results
+        raw_results: Nested dictionary of results with structure {model: {package: {query: metrics}}}
         model_names: List of model names
         metrics: List of metric names to include
         query_labels: Index of query labels
@@ -181,12 +193,12 @@ def raw_results_to_final_df(
     columns = pd.MultiIndex.from_product([metrics, model_names], names=['Metric', 'Model'])
     final_df = pd.DataFrame(index=query_labels, columns=columns)
 
-    for package_name, package_data in raw_results.items():
-        if package_name == 'plots':
-            continue
-        for model_name, model_data in package_data.items():
+    for model_name, model_data in raw_results.items():
+        for package_name, package_data in model_data.items():
+            if package_name == 'plots':
+                continue
             for query_label in query_labels:
-                for metric_name, value in model_data[query_label].items():
+                for metric_name, value in package_data[query_label].items():
                     if metric_name in metrics:  # Only include requested metrics
                         final_df.loc[query_label, (metric_name, model_name)] = value
 
