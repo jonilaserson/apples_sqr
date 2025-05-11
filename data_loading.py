@@ -2,6 +2,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from common import GT_COL, SCORE_COL, cache_data, format_query_stats
+from metrics import DatasetInfo
 
 def get_query_features_df(df_samples: pd.DataFrame, queries: List[str]) -> pd.DataFrame:
     """Apply queries on df_samples and return a boolean feature dataframe.
@@ -104,7 +105,7 @@ def prepare_tables(
     gt_column: str = 'GT',
     score_column: Optional[str] = None,
     pos_classes: List[str] = ['1']
-) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, DatasetInfo]:
     """Prepare test data and model predictions for evaluation, optionally filtered by queries.
     
     Args:
@@ -121,7 +122,7 @@ def prepare_tables(
         Tuple of:
             - DataFrame with test data and model predictions
             - Boolean DataFrame of valid queries
-            - Dictionary containing information about the dataset
+            - DatasetInfo object containing information about the dataset
     """
     if model_names is None:
         model_names = [Path(mf).stem for mf in model_files]
@@ -181,22 +182,21 @@ def prepare_tables(
         models_df = join_with_namespace(models_df, model_df, right_ns=model_name, left_ns="test")
 
     valid_queries = get_valid_queries(queries_file, test_df)
-    info_dict = {
-        "test_file": test_file,
-        "total_samples": total_samples,
-        "filtered_samples": filtered_samples,
-        "filter_query": filter_query,
-        "gt_column": gt_column,
-        "model_paths": model_files_dict,
-        "available_classes": available_classes,
-        "pos_classes": pos_classes
-    }
     
-    # Only include score_column if it was explicitly provided
-    if score_column is not None:
-        info_dict["score_column"] = score_column
+    # Create DatasetInfo object
+    info = DatasetInfo(
+        test_file=test_file,
+        total_samples=total_samples,
+        filtered_samples=filtered_samples,
+        filter_query=filter_query,
+        gt_column=gt_column,
+        model_paths=model_files_dict,
+        available_classes=available_classes,
+        pos_classes=pos_classes,
+        score_column=score_column
+    )
         
-    return models_df, valid_queries, info_dict
+    return models_df, valid_queries, info
 
 def validate_data(test_df: pd.DataFrame, model_dfs: Dict[str, pd.DataFrame]) -> None:
     """Validate test and model data compatibility.

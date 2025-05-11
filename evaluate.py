@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import time
+from typing import Optional, List, Tuple, Dict, Any
 
 
 # Import and configure Streamlit first if available
@@ -12,7 +13,7 @@ except ImportError:
     st = None
     
 from data_loading import prepare_tables
-from metrics import compute_metrics, raw_results_to_final_df
+from metrics import compute_metrics, raw_results_to_final_df, DatasetInfo
 from display import display_results, transform_df_for_model_view, setup_streamlit_display, display_dataset_info
 from common import get_meta_columns_in_order
 
@@ -46,7 +47,7 @@ def main():
     metrics = [m.strip().lower() for m in args.metrics.split(',')]
 
     # Load the data once
-    models_df, queries, info_dict = prepare_tables(
+    models_df, queries, info = prepare_tables(
         args.test,
         args.models,
         args.queries,
@@ -55,9 +56,9 @@ def main():
         score_column=args.score_col,
         pos_classes=args.pos_classes
     )
-
+    model_names = list(info.model_paths.keys())
+    
     # Validate thresholds
-    model_names = get_meta_columns_in_order(models_df)[1:]
     validate_thresholds(args.thresh, len(model_names))
 
     if args.thresh:
@@ -67,7 +68,13 @@ def main():
 
     if not args.gui:
         # Compute all metrics
-        raw_results = compute_metrics(models_df, queries, thresholds=thresh_values, packages=("thresh", "raw", "plots"))
+        raw_results = compute_metrics(
+            models_df,
+            info,
+            queries_bool_df=queries,
+            thresholds=thresh_values,
+            packages=("thresh", "raw", "plots", "multiclass")
+        )
         results = raw_results_to_final_df(raw_results, model_names, metrics, queries.columns)
         
         if results is not None and not results.empty:
@@ -75,6 +82,16 @@ def main():
                 print(f"Initial filter applied: '{args.filter}'")
 
             display_results(results, metrics, flatten=args.flatten)
+            
+            # Display confusion matrices for each model
+            print("\nConfusion Matrices:")
+            for model_name in model_names:
+                if 'multiclass' in raw_results[model_name]:
+                    print(f"\n{model_name} Confusion Matrix:")
+                    # Get the first available query label
+                    query_label = next(iter(raw_results[model_name]['multiclass'].keys()))
+                    conf_matrix = raw_results[model_name]['multiclass'][query_label]
+                    print(conf_matrix.to_markdown())
 
         end_time = time.time()
         duration = end_time - start_time
@@ -92,19 +109,19 @@ def main():
         st.title("Interactive Model Evaluator")
 
         # Multi-class selection UI if multiple classes are available
-        if len(info_dict['available_classes']) > 1:
+        if len(info.available_classes) > 1:
             st.sidebar.header("Class Selection")
             selected_pos_classes = st.sidebar.multiselect(
                 "Select classes to consider as positive:",
-                options=info_dict['available_classes'],
-                default=info_dict['pos_classes'],
+                options=info.available_classes,
+                default=info.pos_classes,
                 help="Scores for these classes will be summed to determine the positive class score"
             )
             
             # Recalculate if class selection changed
-            if selected_pos_classes and selected_pos_classes != info_dict['pos_classes']:
+            if selected_pos_classes and selected_pos_classes != info.pos_classes:
                 # Reload with new class selection
-                models_df, queries, info_dict = prepare_tables(
+                models_df, queries, info = prepare_tables(
                     args.test,
                     args.models,
                     args.queries,
@@ -115,7 +132,7 @@ def main():
                 )
         
         # Add collapsible info box - moved here to show updated info_dict
-        display_dataset_info(info_dict)
+        display_dataset_info(info)
 
         threshold_inputs = []
         st.sidebar.header("Thresholds per model")
@@ -131,7 +148,13 @@ def main():
             threshold_inputs.append(value)
 
         # Compute all metrics including plots
-        raw_results = compute_metrics(models_df, queries, thresholds=threshold_inputs, packages=("thresh", "raw", "plots"))
+        raw_results = compute_metrics(
+            models_df,
+            info,
+            queries_bool_df=queries,
+            thresholds=threshold_inputs,
+            packages=("thresh", "raw", "plots")
+        )
         results = raw_results_to_final_df(raw_results, model_names, metrics, queries.columns)
 
         query_labels = results.index.tolist()
