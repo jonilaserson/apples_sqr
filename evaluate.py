@@ -14,7 +14,7 @@ except ImportError:
     
 from data_loading import prepare_tables
 from metrics import compute_metrics, raw_results_to_final_df, DatasetInfo
-from display import display_results, transform_df_for_model_view, setup_streamlit_display, display_dataset_info
+from display import display_results, transform_df_for_model_view, setup_streamlit_display, display_dataset_info, print_confusion_matrix, display_confusion_matrix
 from common import get_meta_columns_in_order
 
 
@@ -73,7 +73,7 @@ def main():
             info,
             queries_bool_df=queries,
             thresholds=thresh_values,
-            packages=("thresh", "raw", "plots", "multiclass")
+            packages=("thresh", "raw", "plots", "confusion","multiclass")
         )
         results = raw_results_to_final_df(raw_results, model_names, metrics, queries.columns)
         
@@ -86,12 +86,12 @@ def main():
             # Display confusion matrices for each model
             print("\nConfusion Matrices:")
             for model_name in model_names:
-                if 'multiclass' in raw_results[model_name]:
+                if 'confusion' in raw_results[model_name]:
                     print(f"\n{model_name} Confusion Matrix:")
                     # Get the first available query label
-                    query_label = next(iter(raw_results[model_name]['multiclass'].keys()))
-                    conf_matrix = raw_results[model_name]['multiclass'][query_label]
-                    print(conf_matrix.to_markdown())
+                    query_label = next(iter(raw_results[model_name]['confusion'].keys()))
+                    conf_matrix = raw_results[model_name]['confusion'][query_label]
+                    print_confusion_matrix(conf_matrix)
 
         end_time = time.time()
         duration = end_time - start_time
@@ -153,22 +153,21 @@ def main():
             info,
             queries_bool_df=queries,
             thresholds=threshold_inputs,
-            packages=("thresh", "raw", "plots")
+            packages=("thresh", "raw", "plots", "confusion", "multiclass")
         )
         results = raw_results_to_final_df(raw_results, model_names, metrics, queries.columns)
 
-        query_labels = results.index.tolist()
-        table_container, plot_container = st.columns([4, 5])
+        # Add query selection to sidebar after we have the results
+        st.sidebar.header("Query Selection")
+        selected_query_label = st.sidebar.selectbox(
+            "Select a query to visualize:",
+            options=results.index.tolist(),
+            index=0,  # pre-select the first query
+            help="Select a query to view its metrics and performance curves"
+        )
 
-        # Place the dropdown and radio on the same row
+        # Place the radio on the same row
         col1, col2 = st.columns([4, 2])
-        with col1:
-            selected_query_label = st.selectbox(
-                "Select a query to visualize:",
-                options=query_labels,
-                index=0,  # pre-select the first query
-                help="Select a query to view its metrics and performance curves"
-            )
         with col2:
             view_toggle = st.radio(
                 "Select view type:",
@@ -176,6 +175,8 @@ def main():
                 horizontal=True,
                 help="Query-indexed: metrics as rows, models as columns. Model-indexed: models as rows, metrics as columns."
             )
+
+        table_container, plot_container = st.columns([4, 5])
 
         # Now plot, based on the *selected* query
         with plot_container:
@@ -193,6 +194,14 @@ def main():
                 use_container_width=False,
                 height=400
             )
+            
+        # Display confusion matrices for each model
+        st.subheader("Confusion Matrices")
+        for model_name in model_names:
+            if 'confusion' in raw_results[model_name]:
+                st.write(f"**{model_name}**")
+                conf_matrix = raw_results[model_name]['confusion'][selected_query_label]
+                display_confusion_matrix(conf_matrix)
 
 if __name__ == "__main__":
     main()

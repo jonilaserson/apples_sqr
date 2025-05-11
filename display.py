@@ -1,39 +1,53 @@
 import pandas as pd
 from plots import plot_curves
+from metrics import DatasetInfo
 
-def display_dataset_info(info_dict):
+def display_dataset_info(info: DatasetInfo):
     """Display dataset information in a collapsible Streamlit expander.
     
     Args:
-        info_dict: Dictionary containing all dataset information
+        info: DatasetInfo object containing all dataset information
     """
     import streamlit as st
     
     with st.expander("Dataset Information", expanded=False):
-        info_text = f"**Test Set:** {info_dict['test_file']} ({info_dict['total_samples']:,} samples)<br>"
+        info_text = f"**Test Set:** {info.test_file} ({info.total_samples:,} samples)<br>"
         
-        if info_dict['filter_query']:
-            info_text += f"**Filter:** `{info_dict['filter_query']}` ({info_dict['filtered_samples']:,} samples after filtering)<br>"
+        if info.filter_query:
+            info_text += f"**Filter:** `{info.filter_query}` ({info.filtered_samples:,} samples after filtering)<br>"
         
-        info_text += f"**Ground Truth Column:** `{info_dict['gt_column']}`<br>"
+        info_text += f"**Ground Truth Column:** `{info.gt_column}`<br>"
         
         # Show available classes
-        if 'available_classes' in info_dict:
-            info_text += f"**Available Classes:** {', '.join(f'`{col}`' for col in info_dict['available_classes'])}<br>"
+        if info.available_classes:
+            info_text += f"**Available Classes:** {', '.join(f'`{col}`' for col in info.available_classes)}<br>"
         
         # Show positive classes
-        if 'pos_classes' in info_dict:
-            info_text += f"**Positive Classes:** {', '.join(f'`{col}`' for col in info_dict['pos_classes'])}<br>"
+        if info.pos_classes:
+            info_text += f"**Positive Classes:** {', '.join(f'`{col}`' for col in info.pos_classes)}<br>"
         
         # Show score column only if explicitly provided
-        if 'score_column' in info_dict:
-            info_text += f"**Score Column:** `{info_dict['score_column']}`<br>"
+        if info.score_column:
+            info_text += f"**Score Column:** `{info.score_column}`<br>"
         
         info_text += "**Models:**<br>"
-        for name, path in info_dict['model_paths'].items():
+        for name, path in info.model_paths.items():
             info_text += f"- {name}: `{path}`<br>"
         
         st.markdown(info_text, unsafe_allow_html=True)
+
+def flatten_multiindex_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Flatten a DataFrame with MultiIndex columns to show only the second level.
+    
+    Args:
+        df: DataFrame with MultiIndex columns
+        
+    Returns:
+        DataFrame with flattened column names
+    """
+    flat_df = df.copy()
+    flat_df.columns = flat_df.columns.get_level_values(1)
+    return flat_df
 
 def display_results(results, metrics, flatten=False):
     if results.empty:
@@ -97,3 +111,54 @@ def setup_streamlit_display():
             st.pyplot(fig2)
     
     return plot_roc_and_pr_curves_for_streamlit 
+
+def display_confusion_matrix(conf_matrix: pd.DataFrame):
+    """Display a confusion matrix with colored cells and stats side by side.
+    
+    Args:
+        conf_matrix: DataFrame containing confusion matrix with MultiIndex columns ['predictions', 'stats']
+    """
+    import streamlit as st
+    
+    # Split into confusion matrix and stats
+    matrix = conf_matrix["predictions"]
+    stats = conf_matrix["stats"]
+    
+    # Create two columns for side-by-side display
+    col1, col2 = st.columns([5, 5])
+    
+    with col1:
+        # Style the confusion matrix cells based on their values
+        def color_cells(val, row_idx, col_idx):
+            # Normalize the value relative to the max value in the matrix
+            max_val = matrix.values.max()
+            if max_val == 0:
+                return 'background-color: white'
+            # Create a color gradient from white to dark blue
+            intensity = val / max_val
+            # Use a more visually appealing color scheme
+            # Green for diagonal (correct predictions)
+            # Red for off-diagonal (incorrect predictions)
+            if val == 0:
+                return 'background-color: white'
+            elif row_idx == col_idx:
+                # This is a diagonal element (correct prediction)
+                return f'background-color: rgba(0, 255, 0, {intensity:.2f})'
+            else:
+                # This is an off-diagonal element (incorrect prediction)
+                return f'background-color: rgba(255, 0, 0, {intensity:.2f})'
+        
+        # Apply styling and display
+        styled_matrix = matrix.style.applymap(color_cells, row_idx=matrix.index.get_indexer, col_idx=matrix.columns.get_indexer)
+        st.dataframe(styled_matrix, use_container_width=True)
+    
+    with col2:
+        st.dataframe(stats, use_container_width=True)
+
+def print_confusion_matrix(conf_matrix: pd.DataFrame):
+    """Print confusion matrix in text mode with flattened column names.
+    
+    Args:
+        conf_matrix: DataFrame containing confusion matrix with MultiIndex columns ['predictions', 'stats']
+    """
+    print(flatten_multiindex_columns(conf_matrix).to_markdown()) 

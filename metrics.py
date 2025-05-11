@@ -75,7 +75,7 @@ def compute_plot_metrics(y_true: np.ndarray, y_score: np.ndarray) -> Dict[str, n
         'recall': recall[::-1],
     }
 
-
+@cache_data
 def compute_multiclass_confusion_matrix(
     y_true_classes: pd.Series,
     y_pred_scores: pd.DataFrame,
@@ -151,7 +151,51 @@ def compute_multiclass_confusion_matrix(
     conf_matrix = conf_matrix
     stats = stats.round(3)
     
-    return pd.concat([conf_matrix, stats], axis=1)
+    # Create the combined DataFrame with MultiIndex
+    return pd.concat([conf_matrix, stats], axis=1, keys=['predictions', 'stats'])
+
+def compute_multiclass_summary_stats(
+    y_true_classes: pd.Series,
+    y_pred_scores: pd.DataFrame,
+    threshold: float = 0.5
+) -> Dict[str, float]:
+    """Compute summary statistics for multiclass classification.
+    
+    Args:
+        y_true_classes: Series of true class labels
+        y_pred_scores: DataFrame where columns are class names and values are scores
+        threshold: Threshold for considering a class prediction as positive
+        
+    Returns:
+        Dictionary containing accuracy, precision, coverage, and recall metrics
+    """
+    # Get confusion matrix and stats
+    conf_matrix = compute_multiclass_confusion_matrix(y_true_classes, y_pred_scores, threshold)
+    
+    # Get the confusion matrix without the stats columns
+    matrix = conf_matrix["predictions"]
+    
+    # Calculate total samples and correct predictions
+    total_samples = matrix.values.sum()
+    total_correct = matrix.values.diagonal().sum()
+    
+    # Calculate samples excluding dont_know
+    total_without_dont_know = total_samples - matrix['dont_know'].sum()
+    
+    # In multiclass without negatives:
+    # - recall = correct / total (all samples)
+    # - accuracy = precision = correct / total_without_dont_know (only confident predictions)
+    recall = total_correct / total_samples
+    accuracy = total_correct / total_without_dont_know
+    
+    # Coverage is the percentage of samples that were confidently predicted
+    coverage = total_without_dont_know / total_samples
+    
+    return {
+        'mc_accuracy': accuracy,
+        'mc_recall': recall,
+        'mc_coverage': coverage
+    }
 
 #
 # Metric packages definition
@@ -174,9 +218,15 @@ METRIC_PACKAGES: Dict[str, MetricPackage] = {
         type=MetricType.PLOT,
         needs_threshold=False
     ),
-    'multiclass': MetricPackage(
+    'confusion': MetricPackage(
         func=compute_multiclass_confusion_matrix,
         type=MetricType.MATRIX,
+        needs_threshold=True,
+        needs_binary=False
+    ),
+    'multiclass': MetricPackage(
+        func=compute_multiclass_summary_stats,
+        type=MetricType.SCALAR,
         needs_threshold=True,
         needs_binary=False
     )
