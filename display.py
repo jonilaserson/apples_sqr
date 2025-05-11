@@ -1,4 +1,6 @@
 import pandas as pd
+import numpy as np
+import matplotlib.colors as mcolors
 from plots import plot_curves
 from metrics import DatasetInfo
 
@@ -112,13 +114,15 @@ def setup_streamlit_display():
     
     return plot_roc_and_pr_curves_for_streamlit 
 
-def display_confusion_matrix(conf_matrix: pd.DataFrame):
+def display_confusion_matrix(conf_matrix: pd.DataFrame, model_color=None):
     """Display a confusion matrix with colored cells and stats side by side.
     
     Args:
         conf_matrix: DataFrame containing confusion matrix with MultiIndex columns ['predictions', 'stats']
+        model_color: Optional color to use for highlighting cells (matches plot color)
     """
     import streamlit as st
+    import matplotlib.colors as mcolors
     
     # Split into confusion matrix and stats
     matrix = conf_matrix["predictions"]
@@ -127,38 +131,53 @@ def display_confusion_matrix(conf_matrix: pd.DataFrame):
     # Create two columns for side-by-side display
     col1, col2 = st.columns([5, 5])
     
-    with col1:
-        # Style the confusion matrix cells based on their values
-        def color_cells(val, row_idx, col_idx):
-            # Normalize the value relative to the max value in the matrix
-            max_val = matrix.values.max()
-            if max_val == 0:
-                return 'background-color: white'
-            # Create a color gradient from white to dark blue
-            intensity = val / max_val
-            # Use a more visually appealing color scheme
-            # Green for diagonal (correct predictions)
-            # Red for off-diagonal (incorrect predictions)
-            if val == 0:
-                return 'background-color: white'
-            elif row_idx == col_idx:
-                # This is a diagonal element (correct prediction)
-                return f'background-color: rgba(0, 255, 0, {intensity:.2f})'
-            else:
-                # This is an off-diagonal element (incorrect prediction)
-                return f'background-color: rgba(255, 0, 0, {intensity:.2f})'
+    # Helper function to convert any color format to RGB values
+    def get_rgb(color):
+        if color is None:
+            return (0, 128, 0)  # Default green
+        if isinstance(color, (tuple, list, np.ndarray)):
+            return [int(c * 255) for c in color[:3]]
+        if isinstance(color, str):
+            return [int(c * 255) for c in mcolors.to_rgb(color)]
+        return (0, 128, 0)  # Fallback to green
+    
+    # Get RGB values from model color
+    r, g, b = get_rgb(model_color)
+    
+    # Create styling function
+    def color_scale(data):
+        # Get max value for normalization
+        max_val = data.max().max()
+        if max_val == 0:
+            return pd.DataFrame('background-color: white', index=data.index, columns=data.columns)
         
-        # Apply styling and display
-        styled_matrix = matrix.style.applymap(color_cells, row_idx=matrix.index.get_indexer, col_idx=matrix.columns.get_indexer)
+        # Initialize style DataFrame
+        cm = pd.DataFrame('', index=data.index, columns=data.columns)
+        
+        # Apply styling to each cell
+        for i in range(len(data.index)):
+            for j in range(len(data.columns)):
+                val = data.iloc[i, j]
+                if val == 0:
+                    cm.iloc[i, j] = 'background-color: white'
+                    continue
+                
+                # Use model color with intensity proportional to value
+                intensity = val / max_val
+                # Diagonal cells get full intensity, others get half
+                opacity = intensity if i == j else intensity * 0.5
+                cm.iloc[i, j] = f'background-color: rgba({r}, {g}, {b}, {opacity:.2f})'
+        
+        return cm
+    
+    # Apply styling and display
+    with col1:
+        styled_matrix = matrix.style.apply(color_scale, axis=None)
         st.dataframe(styled_matrix, use_container_width=True)
     
     with col2:
         st.dataframe(stats, use_container_width=True)
 
 def print_confusion_matrix(conf_matrix: pd.DataFrame):
-    """Print confusion matrix in text mode with flattened column names.
-    
-    Args:
-        conf_matrix: DataFrame containing confusion matrix with MultiIndex columns ['predictions', 'stats']
-    """
+    """Print confusion matrix in text mode with flattened column names."""
     print(flatten_multiindex_columns(conf_matrix).to_markdown()) 

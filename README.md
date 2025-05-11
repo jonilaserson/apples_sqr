@@ -10,6 +10,8 @@ A tool for evaluating binary classifiers on test data, with support for multi-cl
 - Various metrics: AUC, precision, recall, accuracy, F1, max F1
 - Query-based evaluation
 - Support for filtering test data
+- Interactive confusion matrix visualization with color-coded cells
+- Side-by-side display of confusion matrix and statistics
 
 ## Installation
 
@@ -66,11 +68,17 @@ python evaluate.py -t test_set.csv -m model1.csv --gui
 ```
 
 The GUI provides:
-- Interactive threshold tuning
+- Interactive threshold tuning in the sidebar
+- Query selection in the sidebar
 - ROC and PR curves
 - Multiple view options for results
 - Class selection for multi-class scenarios
 - Dataset information display
+- Interactive confusion matrix visualization:
+  - Color-coded cells (green for correct predictions, red for incorrect)
+  - Intensity indicates magnitude
+  - Side-by-side display with statistics
+  - Updates with selected query
 
 ### Input File Formats
 
@@ -91,6 +99,9 @@ The tool provides:
 - ROC and PR curves
 - Query-based evaluation results
 - Interactive visualization in GUI mode
+- Confusion matrix visualization:
+  - Text mode: Clean tabular format
+  - GUI mode: Color-coded cells with statistics
 
 #### Example Text Output
 
@@ -150,3 +161,8 @@ python evaluate.py -t test_set.csv -m model1.csv --gui --filter "feature1 > 0"
 - The ground truth column is converted to binary (0/1) where 1 indicates membership in the positive classes
 - Available classes are determined from the unique values in the ground truth column
 - The GUI allows dynamic selection of positive classes and threshold tuning
+- The confusion matrix visualization helps identify patterns in model predictions:
+  - Green cells indicate correct predictions
+  - Red cells indicate incorrect predictions
+  - Cell intensity indicates the magnitude of predictions
+  - Statistics are shown side-by-side for easy comparison

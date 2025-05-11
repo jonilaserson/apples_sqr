@@ -2,6 +2,7 @@
 import argparse
 import time
 from typing import Optional, List, Tuple, Dict, Any
+import matplotlib.pyplot as plt
 
 
 # Import and configure Streamlit first if available
@@ -178,6 +179,10 @@ def main():
 
         table_container, plot_container = st.columns([4, 5])
 
+        # Define model colors from the same palette used for plots
+        colors = plt.cm.tab10.colors
+        model_colors = {model_name: colors[i % len(colors)] for i, model_name in enumerate(model_names)}
+
         # Now plot, based on the *selected* query
         with plot_container:
             plot_roc_and_pr_curves_for_streamlit = setup_streamlit_display()
@@ -197,11 +202,11 @@ def main():
             
         # Display confusion matrices for each model
         st.subheader("Confusion Matrices")
-        for model_name in model_names:
+        for i, model_name in enumerate(model_names):
             if 'confusion' in raw_results[model_name]:
                 st.write(f"**{model_name}**")
                 conf_matrix = raw_results[model_name]['confusion'][selected_query_label]
-                display_confusion_matrix(conf_matrix)
+                display_confusion_matrix(conf_matrix, model_color=model_colors[model_name])
 
 if __name__ == "__main__":
     main()

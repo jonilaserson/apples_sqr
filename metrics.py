@@ -44,8 +44,11 @@ def compute_max_f1(y_true: np.ndarray, y_score: np.ndarray) -> Optional[float]:
     return max((f1_score(y_true, (y_score >= t).astype(int)) for t in thresholds), default=None)
 
 
-def compute_confusion_elements(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+def compute_confusion_elements(y_true: np.ndarray, y_score: np.ndarray, threshold: float = 0.5) -> Dict[str, float]:
     """Compute confusion matrix elements and derived metrics."""
+    # Convert scores to binary predictions using threshold
+    y_pred = (y_score >= threshold).astype(int)
+    
     tp = np.logical_and(y_true == 1, y_pred == 1).sum()
     fp = np.logical_and(y_true == 0, y_pred == 1).sum()
     fn = np.logical_and(y_true == 1, y_pred == 0).sum()
@@ -97,7 +100,6 @@ def compute_multiclass_confusion_matrix(
     # Get winning class and score in one go
     winning_scores = y_pred_scores.max(axis=1)
     winning_classes = y_pred_scores.idxmax(axis=1)
-    
     # Create prediction column - winning class if score passes threshold, else 'dont_know'
     pred_classes = winning_classes.where(winning_scores >= threshold, 'dont_know')
     
@@ -271,15 +273,16 @@ def compute_model_metrics(
             y_true = subset_df["test"][info.gt_column]
             y_pred = subset_df[model_name].drop(columns=[SCORE_COL])
         
-        if threshold is not None:
-            y_pred = (y_pred >= threshold).astype(int)
-                    
+       
+        # Call function(s) with appropriate arguments
+        args = (y_true, y_pred)
+        if metric_package.needs_threshold and threshold is not None:
+            args = args + (threshold,)
+        
         if callable(metric_package.func):
-            # Package is a function that returns multiple metrics
-            query_results[query_label] = metric_package.func(y_true, y_pred)
+            query_results[query_label] = metric_package.func(*args)
         else:
-            # Package is a dictionary of metric functions
-            query_results[query_label] = {metric_name: func(y_true, y_pred) for metric_name, func in metric_package.func.items()}
+            query_results[query_label] = {name: func(*args) for name, func in metric_package.func.items()}
     
     return query_results
 
