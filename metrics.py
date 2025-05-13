@@ -128,7 +128,7 @@ def compute_multiclass_confusion_matrix(
     stats = conf_matrix[[]].copy()
     
     # Recall: true positives / total actual positives
-    stats['recall'] = np.diagonal(conf_matrix.values) / conf_matrix.sum(axis=1)
+    stats['sensitivity'] = np.diagonal(conf_matrix.values) / conf_matrix.sum(axis=1)
     
     # Precision: true positives / total predicted positives
     stats['precision'] = np.diagonal(conf_matrix.values) / conf_matrix.sum(axis=0)[:-1]
