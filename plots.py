@@ -92,3 +92,40 @@ def plot_pr_curve_for_model(raw_results, color, model_name, query, ax=None, figs
 
     ax.legend(loc='lower left', fontsize=8)
     return ax.figure, ax 
+
+
+def plot_pc_curve_for_model(raw_results, color, model_name, query, ax=None, figsize=(4, 4)):
+    fig = None
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    plot_metrics = raw_results[model_name]['plots'][query]  # Access metrics for this model and query
+    precision = plot_metrics['precision']
+    recall = plot_metrics['recall']
+    P_over_T = recall / precision
+    thresh_metrics = raw_results[model_name]['thresh'][query]
+    tp = thresh_metrics['tp']
+    fp = thresh_metrics['fp']
+    fn = thresh_metrics['fn']
+    tn = thresh_metrics['tn']
+    T = tp + fn
+    F = tn + fp
+    coverage = P_over_T * T / (F + T)
+
+    ax.plot(coverage, precision, label=f"{model_name}", color=color)
+
+    # Find the closest threshold point using ROC thresholds since they are sorted
+    thresh_metrics = raw_results[model_name]['thresh'][query]
+    operation_precision = thresh_metrics['precision']
+    operation_coverage = (tp + fp) / (F + T)
+    ax.plot(operation_coverage, operation_precision, 'o', color=color)
+
+    if fig is not None: # Created new fig
+        ax.set_xlabel('Recall')
+        ax.set_ylabel('Coverage')
+        ax.set_title("PR: %s" % query)
+        ax.grid(True)
+        plt.tight_layout()
+
+    ax.legend(loc='lower left', fontsize=8)
+    return ax.figure, ax 

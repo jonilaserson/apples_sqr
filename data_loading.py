@@ -104,7 +104,8 @@ def prepare_tables(
     model_names: Optional[List[str]] = None,
     gt_column: str = 'GT',
     score_column: Optional[str] = None,
-    pos_classes: List[str] = ['1']
+    pos_classes: List[str] = ['1'],
+    neg_classes: Optional[List[str]] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame, DatasetInfo]:
     """Prepare test data and model predictions for evaluation, optionally filtered by queries.
     
@@ -117,6 +118,7 @@ def prepare_tables(
         gt_column: Name of ground truth column in test file
         score_column: Name of score column in model files. If None, will use pos_classes.
         pos_classes: List of classes to consider as positive (default: ["1"])
+        neg_classes: Optional list of classes to consider as negative (default: None)
         
     Returns:
         Tuple of:
@@ -127,7 +129,6 @@ def prepare_tables(
     if model_names is None:
         model_names = [Path(mf).stem for mf in model_files]
     model_files_dict = dict(zip(model_names, model_files))
-    
     # Load the raw data
     test_df, model_dfs = load_testset_and_scores(test_file, model_files_dict)
     total_samples = len(test_df)
@@ -144,7 +145,21 @@ def prepare_tables(
             raise ValueError(f"Ground truth column '{gt_column}' is numeric but pos_classes contains non-numeric values: {pos_classes}")
     test_df[GT_COL] = test_df[gt_column].isin(pos_classes).astype(int)
 
+    # Filter test set to only include samples in pos_classes + neg_classes if neg_classes is non-empty
+    if neg_classes is not None and len(neg_classes) > 0:
+        # Validate that pos_classes and neg_classes don't intersect
+        if set(pos_classes) & set(neg_classes):
+            raise ValueError("pos_classes and neg_classes cannot have overlapping values")
+        all_classes = pos_classes + neg_classes
+        # Create a proper pandas query string for class filtering
+        classes_query = f"{gt_column} in {all_classes}"
+        if filter_query:
+            filter_query = f"{filter_query} and ({classes_query})"
+        else:
+            filter_query = classes_query
+        
     if filter_query:
+        print(f"Applying filter: '{filter_query}'")
         original_size = len(test_df)
         test_df = test_df.query(filter_query)
         filtered_size = len(test_df)
@@ -154,8 +169,10 @@ def prepare_tables(
     else:
         filtered_samples = total_samples
 
-    # Get available classes from the test set's ground truth column
+    # Get available classes from the test set's ground truth column.  Put pos_classes first.
     available_classes = list(map(str, sorted(test_df[gt_column].unique().tolist())))
+    #pos_classes = [c for c in available_classes if c in pos_classes]
+    #available_classes = pos_classes + [c for c in available_classes if c not in pos_classes]
 
     # Handle score columns
     if score_column is None:
@@ -193,6 +210,7 @@ def prepare_tables(
         model_paths=model_files_dict,
         available_classes=available_classes,
         pos_classes=pos_classes,
+        neg_classes=neg_classes,
         score_column=score_column
     )
         

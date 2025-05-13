@@ -21,6 +21,7 @@ class DatasetInfo:
     model_paths: Dict[str, str]
     available_classes: List[str]
     pos_classes: List[str]
+    neg_classes: List[str]
     score_column: Optional[str] = None
 
 class MetricType(Enum):
@@ -113,7 +114,8 @@ def compute_multiclass_confusion_matrix(
     conf_matrix = df.value_counts(['GT_class', 'pred_class']).sort_index().unstack(fill_value=0)
     
     # Get all classes from y_pred_scores columns
-    all_classes = list(y_pred_scores.columns)
+    all_classes = y_true_classes.unique().tolist()
+    #all_classes = list(y_pred_scores.columns)
     
     # Ensure all classes are present in both index and columns
     conf_matrix = conf_matrix.reindex(index=all_classes, columns=all_classes + ['dont_know'], fill_value=0)

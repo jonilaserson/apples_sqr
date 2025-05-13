@@ -42,6 +42,7 @@ def main():
     parser.add_argument('--gt_column', default='GT', help='Name of the ground truth column in test set (default: GT)')
     parser.add_argument('--score_col', help='Name of the score column in model files (default: None, will infer from pos_classes)')
     parser.add_argument('--pos_classes', nargs='+', default=['1'], help='List of classes to consider as positive (default: ["1"])')
+    parser.add_argument('--neg_classes', nargs='+', default=[], help='List of classes to consider as negative (default: [])')
 
     args = parser.parse_args()
 
@@ -55,7 +56,8 @@ def main():
         filter_query=args.filter,
         gt_column=args.gt_column,
         score_column=args.score_col,
-        pos_classes=args.pos_classes
+        pos_classes=args.pos_classes,
+        neg_classes=args.neg_classes
     )
     model_names = list(info.model_paths.keys())
     
@@ -112,6 +114,8 @@ def main():
         # Multi-class selection UI if multiple classes are available
         if len(info.available_classes) > 1:
             st.sidebar.header("Class Selection")
+            
+            # First select positive classes
             selected_pos_classes = st.sidebar.multiselect(
                 "Select classes to consider as positive:",
                 options=info.available_classes,
@@ -119,8 +123,18 @@ def main():
                 help="Scores for these classes will be summed to determine the positive class score"
             )
             
+            # Then select negative classes from remaining classes
+            remaining_classes = [c for c in info.available_classes if c not in selected_pos_classes]
+            selected_neg_classes = st.sidebar.multiselect(
+                "Select classes to consider as negative:",
+                options=remaining_classes,
+                default=info.neg_classes,
+                help="These classes will be considered as negative class"
+            )
+            
             # Recalculate if class selection changed
-            if selected_pos_classes and selected_pos_classes != info.pos_classes:
+            if (selected_pos_classes != info.pos_classes or 
+                selected_neg_classes != info.neg_classes):
                 # Reload with new class selection
                 models_df, queries, info = prepare_tables(
                     args.test,
@@ -129,7 +143,8 @@ def main():
                     filter_query=args.filter,
                     gt_column=args.gt_column,
                     score_column=args.score_col,
-                    pos_classes=selected_pos_classes
+                    pos_classes=selected_pos_classes,
+                    neg_classes=selected_neg_classes
                 )
         
         # Add collapsible info box - moved here to show updated info_dict
@@ -168,13 +183,16 @@ def main():
         )
 
         # Place the radio on the same row
-        col1, col2 = st.columns([4, 2])
+        col1, col2 = st.columns([4, 3])
+        with col1:
+            if info.filter_query:
+                st.subheader(f"**Filter:** {info.filter_query}")
         with col2:
             view_toggle = st.radio(
-                "Select view type:",
+                "",
                 options=["Query-indexed view", "Model-indexed view"],
                 horizontal=True,
-                help="Query-indexed: metrics as rows, models as columns. Model-indexed: models as rows, metrics as columns."
+                #help="Query-indexed: metrics as rows, models as columns. Model-indexed: models as rows, metrics as columns."
             )
 
         table_container, plot_container = st.columns([4, 5])
@@ -206,7 +224,7 @@ def main():
             if 'confusion' in raw_results[model_name]:
                 st.write(f"**{model_name}**")
                 conf_matrix = raw_results[model_name]['confusion'][selected_query_label]
-                display_confusion_matrix(conf_matrix, model_color=model_colors[model_name])
+                display_confusion_matrix(conf_matrix, model_color=model_colors[model_name], pos_classes=info.pos_classes)
 
 if __name__ == "__main__":
     main()

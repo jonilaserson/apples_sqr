@@ -24,10 +24,6 @@ def display_dataset_info(info: DatasetInfo):
         if info.available_classes:
             info_text += f"**Available Classes:** {', '.join(f'`{col}`' for col in info.available_classes)}<br>"
         
-        # Show positive classes
-        if info.pos_classes:
-            info_text += f"**Positive Classes:** {', '.join(f'`{col}`' for col in info.pos_classes)}<br>"
-        
         # Show score column only if explicitly provided
         if info.score_column:
             info_text += f"**Score Column:** `{info.score_column}`<br>"
@@ -114,67 +110,85 @@ def setup_streamlit_display():
     
     return plot_roc_and_pr_curves_for_streamlit 
 
-def display_confusion_matrix(conf_matrix: pd.DataFrame, model_color=None):
+def get_rgb(color):
+    if color is None:
+        return (0, 128, 0)  # Default green
+    if isinstance(color, (tuple, list, np.ndarray)):
+        return [int(c * 255) for c in color[:3]]
+    if isinstance(color, str):
+        return [int(c * 255) for c in mcolors.to_rgb(color)]
+    return (0, 128, 0)  # Fallback to green
+
+def color_scale(data, r, g, b):
+    max_val = data.max().max()
+    if max_val == 0:
+        return pd.DataFrame('background-color: white', index=data.index, columns=data.columns)
+    cm = pd.DataFrame('', index=data.index, columns=data.columns)
+    for i in range(len(data.index)):
+        for j in range(len(data.columns)):
+            val = data.iloc[i, j]
+            if val == 0:
+                cm.iloc[i, j] = 'background-color: white'
+                continue
+            intensity = val / max_val
+            opacity = intensity if i == j else intensity * 0.5
+            cm.iloc[i, j] = f'background-color: rgba({r}, {g}, {b}, {opacity:.2f})'
+    return cm
+
+def confusion_matrix_to_html(matrix, block_size, model_color):
+    r, g, b = get_rgb(model_color)
+    cell_styles = color_scale(matrix, r, g, b)
+    last_pos_col = last_pos_row = block_size - 1
+    html = ['<table style="border-collapse: collapse; width: 100%;">']
+    html.append('<tr>')
+    html.append('<th style="border: 1px solid #ddd; padding: 8px;"></th>')
+    for i, col in enumerate(matrix.columns):
+        col_bg = f'background-color: rgba({r}, {g}, {b}, 0.2);' if i <= last_pos_col else ''
+        border_right = 'border-right: 4px solid #222;' if i == last_pos_col else ''
+        html.append(f'<th style="border: 1px solid #ddd; {border_right} padding: 8px; text-align: center; {col_bg}">{col}</th>')
+    html.append('</tr>')
+    for row_i, idx in enumerate(matrix.index):
+        html.append('<tr>')
+        bg_color = f'background-color: rgba({r}, {g}, {b}, 0.2)' if row_i <= last_pos_row else 'white'
+        border_bottom = 'border-bottom: 4px solid #222;' if row_i == last_pos_row else ''
+        html.append(f'<th style="border: 1px solid #ddd; {border_bottom} padding: 8px; background-color: {bg_color};">{idx}</th>')
+        for col_i, col in enumerate(matrix.columns):
+            val = matrix.loc[idx, col]
+            cell_style = cell_styles.loc[idx, col]
+            border_right = 'border-right: 4px solid #222;' if col_i == last_pos_col else ''
+            border_bottom = 'border-bottom: 4px solid #222;' if row_i == last_pos_row else ''
+            html.append(f'<td style="border: 1px solid #ddd; {border_right}{border_bottom} padding: 8px; {cell_style}">{val}</td>')
+        html.append('</tr>')
+    html.append('</table>')
+    return ''.join(html)
+
+def display_confusion_matrix(conf_matrix: pd.DataFrame, model_color=None, pos_classes=None):
     """Display a confusion matrix with colored cells and stats side by side.
     
     Args:
         conf_matrix: DataFrame containing confusion matrix with MultiIndex columns ['predictions', 'stats']
         model_color: Optional color to use for highlighting cells (matches plot color)
+        pos_classes: List of positive class labels to show first
     """
     import streamlit as st
-    import matplotlib.colors as mcolors
-    
-    # Split into confusion matrix and stats
+    # Ensure pos_classes is a list
+    if pos_classes is None:
+        pos_classes = []
     matrix = conf_matrix["predictions"]
     stats = conf_matrix["stats"]
-    
+    # Reorder rows and columns to show positive classes first
+    all_classes = [c for c in matrix.columns if c != 'dont_know']
+    neg_classes = [c for c in all_classes if c not in pos_classes]
+    ordered_columns = pos_classes + neg_classes
+    if 'dont_know' in matrix.columns:
+        ordered_columns.append('dont_know')
+    matrix = matrix.reindex(index=pos_classes + neg_classes, columns=ordered_columns)
+    stats = stats.reindex(index=pos_classes + neg_classes)
     # Create two columns for side-by-side display
     col1, col2 = st.columns([5, 5])
-    
-    # Helper function to convert any color format to RGB values
-    def get_rgb(color):
-        if color is None:
-            return (0, 128, 0)  # Default green
-        if isinstance(color, (tuple, list, np.ndarray)):
-            return [int(c * 255) for c in color[:3]]
-        if isinstance(color, str):
-            return [int(c * 255) for c in mcolors.to_rgb(color)]
-        return (0, 128, 0)  # Fallback to green
-    
-    # Get RGB values from model color
-    r, g, b = get_rgb(model_color)
-    
-    # Create styling function
-    def color_scale(data):
-        # Get max value for normalization
-        max_val = data.max().max()
-        if max_val == 0:
-            return pd.DataFrame('background-color: white', index=data.index, columns=data.columns)
-        
-        # Initialize style DataFrame
-        cm = pd.DataFrame('', index=data.index, columns=data.columns)
-        
-        # Apply styling to each cell
-        for i in range(len(data.index)):
-            for j in range(len(data.columns)):
-                val = data.iloc[i, j]
-                if val == 0:
-                    cm.iloc[i, j] = 'background-color: white'
-                    continue
-                
-                # Use model color with intensity proportional to value
-                intensity = val / max_val
-                # Diagonal cells get full intensity, others get half
-                opacity = intensity if i == j else intensity * 0.5
-                cm.iloc[i, j] = f'background-color: rgba({r}, {g}, {b}, {opacity:.2f})'
-        
-        return cm
-    
-    # Apply styling and display
     with col1:
-        styled_matrix = matrix.style.apply(color_scale, axis=None)
-        st.dataframe(styled_matrix, use_container_width=True)
-    
+        html = confusion_matrix_to_html(matrix, len(pos_classes), model_color)
+        st.markdown(html, unsafe_allow_html=True)
     with col2:
         st.dataframe(stats, use_container_width=True)
 
