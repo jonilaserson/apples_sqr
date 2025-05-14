@@ -97,7 +97,7 @@ def compute_confusion_elements(y_true: np.ndarray, y_score: np.ndarray, threshol
         'fnr': fnr,
         'ppv': precision,
         'npv': npv,
-        'accuracy': (tp + tn) / len(y_true) if len(y_true) > 0 else 0,
+        'accuracy': (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0,
         'f1': f1,
         'coverage': coverage
     }

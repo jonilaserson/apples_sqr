@@ -7,11 +7,13 @@ A tool for evaluating binary classifiers on test data, with support for multi-cl
 - Evaluate binary classifiers on test data
 - Support for multi-class scenarios
 - Interactive GUI for threshold tuning
+- **Dual threshold classification with coverage metrics**
 - Various metrics: AUC, precision, recall, accuracy, F1, max F1
 - Query-based evaluation
 - Support for filtering test data
 - Interactive confusion matrix visualization with color-coded cells
 - Side-by-side display of confusion matrix and statistics
+- **Enhanced ROC curve visualization with operation point analysis**
 
 ## Installation
 
@@ -69,8 +71,10 @@ python evaluate.py -t test_set.csv -m model1.csv --gui
 
 The GUI provides:
 - Interactive threshold tuning in the sidebar
+- **Dual threshold selection for handling uncertainty zones**
 - Query selection in the sidebar
 - ROC and PR curves
+- **Enhanced ROC curve visualization showing operation points and coverage gaps**
 - Multiple view options for results
 - Class selection for multi-class scenarios
 - Dataset information display
@@ -96,7 +100,8 @@ The GUI provides:
 
 The tool provides:
 - Performance metrics for each model
-- ROC and PR curves
+- **Coverage statistics for dual threshold classification**
+- ROC and PR curves with operation point visualization
 - Query-based evaluation results
 - Interactive visualization in GUI mode
 - Confusion matrix visualization:
@@ -166,3 +171,30 @@ python evaluate.py -t test_set.csv -m model1.csv --gui --filter "feature1 > 0"
   - Red cells indicate incorrect predictions
   - Cell intensity indicates the magnitude of predictions
   - Statistics are shown side-by-side for easy comparison
+
+## Advanced Features
+
+### Dual Threshold Classification
+
+The tool supports dual threshold classification, allowing you to define an "uncertainty zone" between two thresholds:
+
+- **High threshold**: Samples with scores above this threshold are classified as positive
+- **Low threshold**: Samples with scores below this threshold are classified as negative
+- **Uncertainty zone**: Samples with scores between thresholds are left unclassified
+
+This approach is useful when:
+- The cost of misclassification is high
+- You want to focus only on high-confidence predictions
+- You need to handle ambiguous cases differently
+
+In the GUI, you can:
+1. Enable dual thresholds using the checkbox next to each model
+2. Set the threshold range using the slider
+3. View coverage metrics showing what percentage of data received a definitive prediction
+4. See dashed lines on ROC curves showing the difference between optimal and actual operation points
+
+Metrics affected by dual thresholds:
+- **Coverage**: Percentage of samples that received a definitive classification
+- **Precision/Recall**: Based on high threshold for positive predictions
+- **Specificity/NPV**: Based on low threshold for negative predictions
+- **Accuracy**: Based only on covered samples (excluding those in the uncertainty zone)
