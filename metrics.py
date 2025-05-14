@@ -45,27 +45,61 @@ def compute_max_f1(y_true: np.ndarray, y_score: np.ndarray) -> Optional[float]:
     return max((f1_score(y_true, (y_score >= t).astype(int)) for t in thresholds), default=None)
 
 
-def compute_confusion_elements(y_true: np.ndarray, y_score: np.ndarray, threshold: float = 0.5) -> Dict[str, float]:
-    """Compute confusion matrix elements and derived metrics."""
-    # Convert scores to binary predictions using threshold
-    y_pred = (y_score >= threshold).astype(int)
+def compute_confusion_elements(y_true: np.ndarray, y_score: np.ndarray, threshold: Union[float, Tuple[float, float]] = 0.5) -> Dict[str, float]:
+    """Compute confusion matrix elements and metrics, handling dual thresholds."""
+    # Handle single vs dual thresholds
+    if isinstance(threshold, tuple):
+        low_thresh, high_thresh = threshold
+    else:
+        low_thresh = high_thresh = threshold
     
-    tp = np.logical_and(y_true == 1, y_pred == 1).sum()
-    fp = np.logical_and(y_true == 0, y_pred == 1).sum()
-    fn = np.logical_and(y_true == 1, y_pred == 0).sum()
-    tn = np.logical_and(y_true == 0, y_pred == 0).sum()
+    # Get predictions and coverage
+    y_pred_pos = (y_score >= high_thresh)
+    y_pred_neg = (y_score <= low_thresh)
+    covered = y_pred_pos | y_pred_neg
+    coverage = covered.mean()
+    
+    # Compute confusion matrix elements
+    tp = np.logical_and(y_true == 1, y_pred_pos).sum()
+    fp = np.logical_and(y_true == 0, y_pred_pos).sum()
+    tn = np.logical_and(y_true == 0, y_pred_neg).sum()
+    fn = np.logical_and(y_true == 1, y_pred_neg).sum()
+    
+    # Compute uncovered positives and negatives
+    up = np.logical_and(y_true == 1, ~covered).sum()
+    un = np.logical_and(y_true == 0, ~covered).sum()
+
+    # Total positives/negatives in ground truth
+    total_pos = (y_true == 1).sum()
+    total_neg = (y_true == 0).sum()
+    
+    # Compute metrics accounting for coverage
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / total_pos if total_pos > 0 else 0  # includes uncovered positives
+    specificity = tn / total_neg if total_neg > 0 else 0  # includes uncovered negatives
+    fpr = fp / total_neg if total_neg > 0 else 0  # includes uncovered negatives
+    fnr = fn / total_pos if total_pos > 0 else 0  # includes uncovered negatives
+    npv = tn / (tn + fn) if (tn + fn) > 0 else 0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    
     return {
         'tp': tp,
         'fp': fp,
         'fn': fn,
         'tn': tn,
-        'precision': tp / (tp + fp) if (tp + fp) > 0 else 0,
-        'recall': tp / (tp + fn) if (tp + fn) > 0 else 0,
-        'specificity': tn / (tn + fp) if (tn + fp) > 0 else 0,
-        'fpr': fp / (tn + fp) if (tn + fp) > 0 else 0,
-        'npv': tn / (tn + fn) if (tn + fn) > 0 else 0,
-        'accuracy': (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0,
-        'f1': 2 * tp / (2 * tp + fp + fn) if (2 * tp + fp + fn) > 0 else 0,
+        'up': up,
+        'un': un,
+        'precision': precision,
+        'recall': recall,
+        'sensitivity': recall,
+        'specificity': specificity,
+        'fpr': fpr,
+        'fnr': fnr,
+        'ppv': precision,
+        'npv': npv,
+        'accuracy': (tp + tn) / len(y_true) if len(y_true) > 0 else 0,
+        'f1': f1,
+        'coverage': coverage
     }
 
 def compute_plot_metrics(y_true: np.ndarray, y_score: np.ndarray) -> Dict[str, np.ndarray]:
@@ -83,7 +117,7 @@ def compute_plot_metrics(y_true: np.ndarray, y_score: np.ndarray) -> Dict[str, n
 def compute_multiclass_confusion_matrix(
     y_true_classes: pd.Series,
     y_pred_scores: pd.DataFrame,
-    threshold: float = 0.5
+    threshold: Union[float, Tuple[float, float]] = 0.5
 ) -> pd.DataFrame:
     """Compute multi-class confusion matrix using vectorized operations.
     
@@ -98,6 +132,10 @@ def compute_multiclass_confusion_matrix(
         - Columns are named 'Predicted' and contain predicted class labels
         - Last columns are metrics: recall, precision, prevalence, coverage, and specificity
     """
+    # If threshold is a tuple, use the high threshold
+    if isinstance(threshold, tuple):
+        threshold = threshold[1]
+    
     # Get winning class and score in one go
     winning_scores = y_pred_scores.max(axis=1)
     winning_classes = y_pred_scores.idxmax(axis=1)
@@ -161,7 +199,7 @@ def compute_multiclass_confusion_matrix(
 def compute_multiclass_summary_stats(
     y_true_classes: pd.Series,
     y_pred_scores: pd.DataFrame,
-    threshold: float = 0.5
+    threshold: Union[float, Tuple[float, float]] = 0.5
 ) -> Dict[str, float]:
     """Compute summary statistics for multiclass classification.
     
@@ -173,6 +211,10 @@ def compute_multiclass_summary_stats(
     Returns:
         Dictionary containing accuracy, precision, coverage, and recall metrics
     """
+    # If threshold is a tuple, use the high threshold
+    if isinstance(threshold, tuple):
+        threshold = threshold[1]
+    
     # Get confusion matrix and stats
     conf_matrix = compute_multiclass_confusion_matrix(y_true_classes, y_pred_scores, threshold)
     
@@ -240,7 +282,7 @@ def compute_model_metrics(
     models_df: pd.DataFrame,
     model_name: str,
     info: DatasetInfo,
-    threshold: Optional[float] = None,
+    threshold: Optional[Union[float, Tuple[float, float]]] = None,
     package: str = 'raw',
     queries_bool_df: Optional[pd.DataFrame] = None
 ) -> Dict[str, Dict[str, float]]:
@@ -275,7 +317,6 @@ def compute_model_metrics(
             y_true = subset_df["test"][info.gt_column]
             y_pred = subset_df[model_name].drop(columns=[SCORE_COL])
         
-       
         # Call function(s) with appropriate arguments
         args = (y_true, y_pred)
         if metric_package.needs_threshold and threshold is not None:
@@ -293,7 +334,7 @@ def compute_metrics(
     models_df: pd.DataFrame,
     info: DatasetInfo,
     queries_bool_df: Optional[pd.DataFrame] = None,
-    thresholds: Optional[List[float]] = None,
+    thresholds: Optional[List[Union[float, Tuple[float, float]]]] = None,
     packages: Tuple[str, ...] = ("thresh", "raw")
 ) -> Dict[str, Dict[str, Dict[str, Dict[str, float]]]]:
     """Compute metrics for all models and queries.

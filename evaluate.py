@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import time
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple, Dict, Any, Union
 import matplotlib.pyplot as plt
 
 
@@ -153,15 +153,40 @@ def main():
         threshold_inputs = []
         st.sidebar.header("Thresholds per model")
         for i, model_name in enumerate(model_names):
-            value = st.sidebar.slider(
-                f"Threshold for {model_name}",
-                min_value=0.0,
-                max_value=1.0,
-                step=0.05,
-                value=float(thresh_values[i]),
-                help=f"Classification threshold for {model_name}. Samples with scores >= threshold are classified as positive."
+            # Store slider value in session state to preserve between toggles
+            if f"threshold_{model_name}" not in st.session_state:
+                st.session_state[f"threshold_{model_name}"] = float(thresh_values[i])
+            
+            model_thresh = st.session_state[f"threshold_{model_name}"]
+            
+            use_dual_thresh = st.sidebar.checkbox(
+                f"Use dual thresholds for {model_name}",
+                help=f"Enable to set separate thresholds for negative and positive classifications for {model_name}"
             )
-            threshold_inputs.append(value)
+            
+            if use_dual_thresh:
+                neg_thresh, pos_thresh = st.sidebar.slider(
+                    f"Threshold range for {model_name}",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=(max(0.0, model_thresh-0.05), model_thresh),
+                    step=0.05,
+                    help=f"Classification threshold range for {model_name}. Samples with scores between min and max will be classified as positive."
+                )
+                st.session_state[f"threshold_{model_name}"] = pos_thresh
+            else:
+                pos_thresh = st.sidebar.slider(
+                    f"Threshold for {model_name}",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=model_thresh,
+                    step=0.05,
+                    help=f"Classification threshold for {model_name}. Samples with scores above this value will be classified as positive."
+                )
+                st.session_state[f"threshold_{model_name}"] = pos_thresh
+                neg_thresh = pos_thresh
+                
+            threshold_inputs.append((neg_thresh, pos_thresh))
 
         # Compute all metrics including plots
         raw_results = compute_metrics(
@@ -189,10 +214,11 @@ def main():
                 st.subheader(f"**Filter:** {info.filter_query}")
         with col2:
             view_toggle = st.radio(
-                "",
+                "View",
                 options=["Query-indexed view", "Model-indexed view"],
                 horizontal=True,
-                #help="Query-indexed: metrics as rows, models as columns. Model-indexed: models as rows, metrics as columns."
+                help="Query-indexed: metrics as rows, models as columns. Model-indexed: models as rows, metrics as columns.",
+                label_visibility="hidden"
             )
 
         table_container, plot_container = st.columns([4, 5])

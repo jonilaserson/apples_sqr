@@ -49,14 +49,25 @@ def plot_roc_curve_for_model(raw_results, color, model_name, query, ax=None, fig
     ax.plot(fpr, tpr, label=f"{model_name} (AUC={model_auc:.2f})", color=color)
 
     thresh_metrics = raw_results[model_name]['thresh'][query]
+    operation_spec = thresh_metrics['specificity']
+    operation_sens = thresh_metrics['recall']
     operation_fpr = thresh_metrics['fpr']
-    operation_tpr = thresh_metrics['recall']
-    ax.plot(operation_fpr, operation_tpr, 'o', color=color)
+    operation_fnr = thresh_metrics['fnr']
+
+    # Plot operation point
+    op_x = 1 - operation_spec
+    op_y = operation_sens
+    ax.plot(op_x, op_y, 'o', color=color)
+    
+    # Plot dashed lines from operation point to curve
+    if thresh_metrics['coverage'] < 1:
+        ax.plot([op_x, operation_fpr], [op_y, op_y], '--', color=color, alpha=0.5)
+        ax.plot([op_x, op_x], [op_y, 1-operation_fnr], '--', color=color, alpha=0.5)
 
     if fig is not None: # Created new fig
         ax.plot([0, 1], [0, 1], 'k--', alpha=0.5)
-        ax.set_xlabel('False Positive Rate')
-        ax.set_ylabel('True Positive Rate')
+        ax.set_xlabel('1 - Specificity')
+        ax.set_ylabel('Sensitivity')
         ax.set_title("ROC: %s" % query)
         ax.grid(True)
         plt.tight_layout()
