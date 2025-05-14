@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import time
-from typing import Optional, List, Tuple, Dict, Any, Union
+from typing import List, Dict, Any
 import matplotlib.pyplot as plt
 
 
@@ -14,7 +14,7 @@ except ImportError:
     st = None
     
 from data_loading import prepare_tables
-from metrics import compute_metrics, raw_results_to_final_df, DatasetInfo
+from metrics import compute_metrics, raw_results_to_final_df
 from display import display_results, transform_df_for_model_view, setup_streamlit_display, display_dataset_info, print_confusion_matrix, display_confusion_matrix
 from common import get_meta_columns_in_order
 

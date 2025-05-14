@@ -1,9 +1,12 @@
+"""Metrics computation and evaluation module for binary and multiclass classification."""
+
+from typing import Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
-from typing import Callable, Dict, List, Optional, Tuple, Union, Any
-from sklearn.metrics import roc_auc_score, precision_score, recall_score, accuracy_score, f1_score, roc_curve, precision_recall_curve
-from common import GT_COL, SCORE_COL, get_meta_columns_in_order, cache_data
+from sklearn.metrics import roc_auc_score, roc_curve, precision_recall_curve, f1_score
+from common import GT_COL, SCORE_COL, cache_data
 from dataclasses import dataclass
+from enum import Enum
 
 # Metric packages definition
 from enum import Enum
@@ -25,12 +28,14 @@ class DatasetInfo:
     score_column: Optional[str] = None
 
 class MetricType(Enum):
+    """Types of metrics that can be computed."""
     SCALAR = "scalar"  # Metrics that go into final_df as scalar columns
     MATRIX = "matrix"  # Metrics that produce their own matrix/table
     PLOT = "plot"     # Metrics used for plotting
 
 @dataclass
 class MetricPackage:
+    """Package of metric functions and their properties."""
     func: Callable
     type: MetricType
     needs_threshold: bool
@@ -104,8 +109,8 @@ def compute_confusion_elements(y_true: np.ndarray, y_score: np.ndarray, threshol
 
 def compute_plot_metrics(y_true: np.ndarray, y_score: np.ndarray) -> Dict[str, np.ndarray]:
     """Compute metrics needed for plotting ROC and PR curves."""
-    fpr, tpr, roc_thresh = roc_curve(y_true, y_score)
-    precision, recall, pr_thresh = precision_recall_curve(y_true, y_score)
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    precision, recall, _ = precision_recall_curve(y_true, y_score)
     return {
         'fpr': fpr,
         'tpr': tpr,

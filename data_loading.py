@@ -159,12 +159,9 @@ def prepare_tables(
             filter_query = classes_query
         
     if filter_query:
-        print(f"Applying filter: '{filter_query}'")
         original_size = len(test_df)
         test_df = test_df.query(filter_query)
         filtered_size = len(test_df)
-        print(f"Applied filter: '{filter_query}'")
-        print(f"Filtered test set from {original_size} to {filtered_size} samples ({filtered_size/original_size*100:.1f}%)")
         filtered_samples = filtered_size
     else:
         filtered_samples = total_samples
