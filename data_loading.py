@@ -3,14 +3,24 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from common import GT_COL, SCORE_COL, cache_data, format_query_stats
 from metrics import DatasetInfo
+import ast
+
+def pop_dict_col(df, dict_col, max_level=1):
+    # Normalize JSON with specified depth
+    try:
+        df_dict = pd.json_normalize(df[dict_col], sep='.', max_level=max_level)
+    except AttributeError:
+        df_dict = pd.json_normalize(df[dict_col].apply(ast.literal_eval), sep='.', max_level=max_level)
+    df_dict.index = df.index
+    return df_dict
 
 def get_query_features_df(df_samples: pd.DataFrame, queries: List[str]) -> pd.DataFrame:
     """Apply queries on df_samples and return a boolean feature dataframe.
-    
+
     Args:
         df_samples: DataFrame containing the data to evaluate queries on
         queries: List of query strings to evaluate
-        
+
     Returns:
         DataFrame where:
             - Index matches df_samples
@@ -26,16 +36,16 @@ def get_query_features_df(df_samples: pd.DataFrame, queries: List[str]) -> pd.Da
                 df_bool[query] = df_samples.eval(query)
         except Exception as e:
             print(query, e)
-            raise        
+            raise
     return df_bool
 
 def get_valid_queries(queries_file: Optional[str], test_df: pd.DataFrame) -> pd.DataFrame:
     """Load queries from file and return a boolean DataFrame indicating which queries are valid for each sample.
-    
+
     Args:
         queries_file: Path to file containing queries, one per line
         test_df: DataFrame containing the test data with GT_COL column
-        
+
     Returns:
         DataFrame where:
             - Index matches test_df
@@ -49,7 +59,7 @@ def get_valid_queries(queries_file: Optional[str], test_df: pd.DataFrame) -> pd.
 
     # First get boolean features for all queries
     query_bools = get_query_features_df(test_df, queries)
-    
+
     # Now validate which queries have both classes
     valid_queries = {}
     total_samples = len(test_df)
@@ -68,7 +78,7 @@ def get_valid_queries(queries_file: Optional[str], test_df: pd.DataFrame) -> pd.
     valid_query_bools = query_bools[list(valid_queries.keys())]
     # Rename columns to use query statistics strings
     valid_query_bools.columns = list(valid_queries.values())
-            
+
     return valid_query_bools
 
 @cache_data
@@ -77,22 +87,25 @@ def load_testset_and_scores(
     model_files: Dict[str, str]
 ) -> Tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
     """Load test data and model predictions from CSV files.
-    
+
     Args:
         test_file: Path to test set CSV file with ground truth
         model_files: Dictionary mapping model names to their file paths
-        
+
     Returns:
             - DataFrame with test data
             - Dictionary mapping model names to their prediction DataFrames
     """
-    test_df = pd.read_csv(test_file).set_index("id")
-    
+    test_df = pd.read_csv(test_file, index_col=0)
+
     model_dfs = {}
     for model_name, model_file in model_files.items():
-        model_df = pd.read_csv(model_file).set_index("id")
+        model_df = pd.read_csv(model_file, index_col=0)
+        if "model_prediction" in model_df.columns:
+            model_df = pop_dict_col(model_df, "model_prediction")
+
         model_dfs[model_name] = model_df
-        
+
     return test_df, model_dfs
 
 @cache_data
@@ -108,7 +121,7 @@ def prepare_tables(
     neg_classes: Optional[List[str]] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame, DatasetInfo]:
     """Prepare test data and model predictions for evaluation, optionally filtered by queries.
-    
+
     Args:
         test_file: Path to test set CSV file with ground truth
         model_files: List of paths to model prediction CSV files
@@ -119,7 +132,7 @@ def prepare_tables(
         score_column: Name of score column in model files. If None, will use pos_classes.
         pos_classes: List of classes to consider as positive (default: ["1"])
         neg_classes: Optional list of classes to consider as negative (default: None)
-        
+
     Returns:
         Tuple of:
             - DataFrame with test data and model predictions
@@ -136,7 +149,7 @@ def prepare_tables(
     # Create standardized ground truth column
     if gt_column not in test_df.columns:
         raise ValueError(f"Ground truth column '{gt_column}' not found in test file")
-    
+
     # Convert ground truth to binary (0/1)
     if pd.api.types.is_numeric_dtype(test_df[gt_column]):        # For numeric ground truth, check if values are in pos_classes
         try:
@@ -157,7 +170,7 @@ def prepare_tables(
             filter_query = f"{filter_query} and ({classes_query})"
         else:
             filter_query = classes_query
-        
+
     if filter_query:
         original_size = len(test_df)
         test_df = test_df.query(filter_query)
@@ -184,7 +197,7 @@ def prepare_tables(
         missing_cols = [col for col in score_columns if col not in model_df.columns]
         if missing_cols:
             raise ValueError(f"Score columns {missing_cols} not found in model file {model_files_dict[model_name]}")
-        
+
         # Sum the specified columns to create SCORE_COL
         model_df[SCORE_COL] = model_df[score_columns].sum(axis=1)
 
@@ -196,7 +209,7 @@ def prepare_tables(
         models_df = join_with_namespace(models_df, model_df, right_ns=model_name, left_ns="test")
 
     valid_queries = get_valid_queries(queries_file, test_df)
-    
+
     # Create DatasetInfo object
     info = DatasetInfo(
         test_file=test_file,
@@ -210,16 +223,16 @@ def prepare_tables(
         neg_classes=neg_classes,
         score_column=score_column
     )
-        
+
     return models_df, valid_queries, info
 
 def validate_data(test_df: pd.DataFrame, model_dfs: Dict[str, pd.DataFrame]) -> None:
     """Validate test and model data compatibility.
-    
+
     Args:
         test_df: DataFrame containing test data
         model_dfs: Dictionary mapping model names to their prediction DataFrames
-        
+
     Raises:
         ValueError: If data validation fails
     """
@@ -246,13 +259,13 @@ def join_with_namespace(
     left_ns: Optional[str] = None
 ) -> pd.DataFrame:
     """Merge two DataFrames by index, adding a namespace to df_right columns.
-    
+
     Args:
         df_left: Left DataFrame to join
         df_right: Right DataFrame to join
         right_ns: Namespace for right DataFrame columns
         left_ns: Optional namespace for left DataFrame columns
-        
+
     Returns:
         DataFrame with hierarchical columns
     """
@@ -264,4 +277,4 @@ def join_with_namespace(
     if not isinstance(df_left_named.columns, pd.MultiIndex):
         df_left_named.columns = pd.MultiIndex.from_product([[left_ns], df_left_named.columns])
 
-    return df_left_named.join(df_right_named) 
+    return df_left_named.join(df_right_named)

@@ -12,7 +12,7 @@ try:
     import pandas as pd
 except ImportError:
     st = None
-    
+
 from data_loading import prepare_tables
 from metrics import compute_metrics, raw_results_to_final_df
 from display import display_results, transform_df_for_model_view, setup_streamlit_display, display_dataset_info, print_confusion_matrix, display_confusion_matrix
@@ -60,7 +60,7 @@ def main():
         neg_classes=args.neg_classes
     )
     model_names = list(info.model_paths.keys())
-    
+
     # Validate thresholds
     validate_thresholds(args.thresh, len(model_names))
 
@@ -79,13 +79,13 @@ def main():
             packages=("thresh", "raw", "plots", "confusion","multiclass")
         )
         results = raw_results_to_final_df(raw_results, model_names, metrics, queries.columns)
-        
+
         if results is not None and not results.empty:
             if args.filter:
                 print(f"Initial filter applied: '{args.filter}'")
 
             display_results(results, metrics, flatten=args.flatten)
-            
+
             # Display confusion matrices for each model
             print("\nConfusion Matrices:")
             for model_name in model_names:
@@ -114,7 +114,7 @@ def main():
         # Multi-class selection UI if multiple classes are available
         if len(info.available_classes) > 1:
             st.sidebar.header("Class Selection")
-            
+
             # First select positive classes
             selected_pos_classes = st.sidebar.multiselect(
                 "Select classes to consider as positive:",
@@ -122,7 +122,7 @@ def main():
                 default=info.pos_classes,
                 help="Scores for these classes will be summed to determine the positive class score"
             )
-            
+
             # Then select negative classes from remaining classes
             remaining_classes = [c for c in info.available_classes if c not in selected_pos_classes]
             selected_neg_classes = st.sidebar.multiselect(
@@ -131,9 +131,9 @@ def main():
                 default=info.neg_classes,
                 help="These classes will be considered as negative class"
             )
-            
+
             # Recalculate if class selection changed
-            if (selected_pos_classes != info.pos_classes or 
+            if (selected_pos_classes != info.pos_classes or
                 selected_neg_classes != info.neg_classes):
                 # Reload with new class selection
                 models_df, queries, info = prepare_tables(
@@ -146,46 +146,90 @@ def main():
                     pos_classes=selected_pos_classes,
                     neg_classes=selected_neg_classes
                 )
-        
+
         # Add collapsible info box - moved here to show updated info_dict
         display_dataset_info(info)
 
-        threshold_inputs = []
         st.sidebar.header("Thresholds per model")
+        threshold_inputs = []
+
         for i, model_name in enumerate(model_names):
-            # Store slider value in session state to preserve between toggles
+            # Initialize threshold values
+            # Use get() to avoid the "widget created with default value but also set via Session State" warning
+            if i < len(thresh_values):
+                default_thresh = thresh_values[i] if isinstance(thresh_values[i], (int, float)) else thresh_values[i][1]
+            else:
+                default_thresh = 0.5
+
+            # Only set session state if it doesn't already exist
             if f"threshold_{model_name}" not in st.session_state:
-                st.session_state[f"threshold_{model_name}"] = float(thresh_values[i])
-            
-            model_thresh = st.session_state[f"threshold_{model_name}"]
-            
+                st.session_state[f"threshold_{model_name}"] = float(default_thresh)
+
+            # Use checkbox with key parameter to bind directly to session state
             use_dual_thresh = st.sidebar.checkbox(
                 f"Use dual thresholds for {model_name}",
+                key=f"use_dual_thresh_{model_name}",
                 help=f"Enable to set separate thresholds for negative and positive classifications for {model_name}"
             )
-            
+
             if use_dual_thresh:
-                neg_thresh, pos_thresh = st.sidebar.slider(
-                    f"Threshold range for {model_name}",
-                    min_value=0.0,
-                    max_value=1.0,
-                    value=(max(0.0, model_thresh-0.05), model_thresh),
-                    step=0.05,
-                    help=f"Classification threshold range for {model_name}. Samples with scores between min and max will be classified as positive."
-                )
-                st.session_state[f"threshold_{model_name}"] = pos_thresh
+                # For dual threshold, use two separate number inputs
+                st.sidebar.text(f"Threshold range for {model_name}")
+
+                # First get the current values
+                current_high = st.session_state[f"threshold_{model_name}"]
+
+                # Only set low threshold session state if it doesn't already exist
+                if f"threshold_low_{model_name}" not in st.session_state:
+                    st.session_state[f"threshold_low_{model_name}"] = max(0.0, current_high - 0.05)
+
+                current_low = st.session_state[f"threshold_low_{model_name}"]
+                current_low = max(0.0, min(current_low, current_high))
+                current_low = max(0.0, min(current_low, current_high))
+
+                col1, col2 = st.sidebar.columns(2)
+                with col1:
+                    neg_thresh = st.number_input(
+                        "Min",
+                        min_value=0.0,
+                        max_value=current_high,
+                        value=current_low,
+                        step=0.05,
+                        key=f"threshold_low_{model_name}",
+                        help="Lower threshold. Samples with scores below this will be classified as negative."
+                    )
+
+                with col2:
+                    pos_thresh = st.number_input(
+                        "Max",
+                        min_value=neg_thresh,
+                        max_value=1.0,
+                        value=current_high,
+                        step=0.05,
+                        key=f"threshold_{model_name}",
+                        help="Upper threshold. Samples with scores above this will be classified as positive."
+                    )
             else:
-                pos_thresh = st.sidebar.slider(
-                    f"Threshold for {model_name}",
+                # Use number_input instead of slider for better focus retention
+                st.sidebar.text(f"Threshold for {model_name}")
+
+                # Get current value from session state
+                current_value = st.session_state[f"threshold_{model_name}"]
+
+                # Use the current value directly without referencing session state in the widget
+                pos_thresh = st.sidebar.number_input(
+                    "Value",
                     min_value=0.0,
                     max_value=1.0,
-                    value=model_thresh,
+                    value=current_value,  # Use variable instead of direct session state reference
                     step=0.05,
-                    help=f"Classification threshold for {model_name}. Samples with scores above this value will be classified as positive."
+                    key=f"threshold_{model_name}",
+                    help=f"Classification threshold for {model_name}. Samples with scores above this value will be classified as positive.",
+                    label_visibility="collapsed"  # Hide the label to avoid focus jumping to it
                 )
-                st.session_state[f"threshold_{model_name}"] = pos_thresh
                 neg_thresh = pos_thresh
-                
+
+            # Add the current thresholds to the list
             threshold_inputs.append((neg_thresh, pos_thresh))
 
         # Compute all metrics including plots
@@ -243,7 +287,7 @@ def main():
                 use_container_width=False,
                 height=400
             )
-            
+
         # Display confusion matrices for each model
         st.subheader("Confusion Matrices")
         for i, model_name in enumerate(model_names):
