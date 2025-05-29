@@ -31,8 +31,8 @@ def main():
     start_time = time.time()
 
     parser = argparse.ArgumentParser(description='Evaluate binary classifiers on test data')
-    parser.add_argument('-t', '--test', required=True, help='Path to test set CSV file with ground truth')
-    parser.add_argument('-m', '--models', required=True, nargs='+', help='Paths to model prediction CSV files')
+    parser.add_argument('-t', '--test', required=True, help='Path to test set file (CSV or parquet) with ground truth')
+    parser.add_argument('-m', '--models', required=True, nargs='+', help='Paths to model prediction files (CSV or parquet)')
     parser.add_argument('-q', '--queries', help='Path to queries text file')
     parser.add_argument('-f', '--filter', help='Initial filter query to apply to test set')
     parser.add_argument('--metrics', default='auc', help='Comma-separated list of metrics to compute (auc,precision,recall,accuracy,f1,max_f1)')
