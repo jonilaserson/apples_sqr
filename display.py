@@ -6,40 +6,40 @@ from metrics import DatasetInfo
 
 def display_dataset_info(info: DatasetInfo):
     """Display dataset information in a collapsible Streamlit expander.
-    
+
     Args:
         info: DatasetInfo object containing all dataset information
     """
     import streamlit as st
-    
+
     with st.expander("Dataset Information", expanded=False):
         info_text = f"**Test Set:** {info.test_file} ({info.total_samples:,} samples)<br>"
-        
+
         if info.filter_query:
             info_text += f"**Filter:** `{info.filter_query}` ({info.filtered_samples:,} samples after filtering)<br>"
-        
+
         info_text += f"**Ground Truth Column:** `{info.gt_column}`<br>"
-        
+
         # Show available classes
         if info.available_classes:
             info_text += f"**Available Classes:** {', '.join(f'`{col}`' for col in info.available_classes)}<br>"
-        
+
         # Show score column only if explicitly provided
         if info.score_column:
             info_text += f"**Score Column:** `{info.score_column}`<br>"
-        
+
         info_text += "**Models:**<br>"
         for name, path in info.model_paths.items():
             info_text += f"- {name}: `{path}`<br>"
-        
+
         st.markdown(info_text, unsafe_allow_html=True)
 
 def flatten_multiindex_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Flatten a DataFrame with MultiIndex columns to show only the second level.
-    
+
     Args:
         df: DataFrame with MultiIndex columns
-        
+
     Returns:
         DataFrame with flattened column names
     """
@@ -89,7 +89,7 @@ def setup_streamlit_display():
     """Import and setup Streamlit components for GUI mode."""
     import streamlit as st
     import matplotlib.pyplot as plt
-    
+
     def plot_roc_and_pr_curves_for_streamlit(raw_results, query='all'):
         # Get the actual query string from the label (extracting from formatted label)
         colors = plt.cm.tab10.colors
@@ -107,8 +107,8 @@ def setup_streamlit_display():
         with col2:
             fig2, ax2 = plot_curves(raw_results, colors, curve_type='pr', query_string=query)
             st.pyplot(fig2)
-    
-    return plot_roc_and_pr_curves_for_streamlit 
+
+    return plot_roc_and_pr_curves_for_streamlit
 
 def get_rgb(color):
     if color is None:
@@ -123,27 +123,27 @@ def color_scale(data, r, g, b):
     max_val = data.max().max()
     if max_val == 0:
         return pd.DataFrame('background-color: white', index=data.index, columns=data.columns)
-    
+
     # Calculate intensities
     intensities = data / max_val
-    
+
     # Create diagonal mask and adjust opacities
-    diag_mask = pd.DataFrame(np.eye(len(data.index), len(data.columns), dtype=bool), 
+    diag_mask = pd.DataFrame(np.eye(len(data.index), len(data.columns), dtype=bool),
                            index=data.index, columns=data.columns)
-    
+
     # Calculate opacities while preserving DataFrame structure
     opacities = intensities.copy()
     opacities[~diag_mask] = opacities[~diag_mask] * 0.5
-    
+
     # Format opacities to 2 decimal places and create style strings
     styles = pd.DataFrame('background-color: white', index=data.index, columns=data.columns)
     styles = styles.mask(data != 0, opacities.map(lambda x: f'background-color: rgba({r}, {g}, {b}, {x:.2f})'))
-    
+
     return styles
 
 def confusion_matrix_to_html(matrix, block_size, model_color, stats_cols=None, stats_rows=None):
     """Display confusion matrix with colored cells and stats.
-    
+
     Args:
         matrix: DataFrame containing the confusion matrix values
         block_size: Number of positive classes (for styling)
@@ -154,7 +154,7 @@ def confusion_matrix_to_html(matrix, block_size, model_color, stats_cols=None, s
     stats_cols = stats_cols if stats_cols is not None else pd.DataFrame()
     stats_rows = stats_rows if stats_rows is not None else pd.DataFrame()
     r, g, b = get_rgb(model_color)
-    
+
     # Define CSS styles without trailing semicolons
     BG_COLOR = f'background-color: rgba({r}, {g}, {b}, 0.2)'
     BORDER_BOTTOM = 'border-bottom: 4px solid #222'
@@ -170,7 +170,7 @@ def confusion_matrix_to_html(matrix, block_size, model_color, stats_cols=None, s
     PADDING = 'padding: 8px'
     SPACER_COL = 'width: 10px; border: none'
     SPACER_ROW = 'height: 10px; border: none'
-    
+
     # Helper function to properly join CSS styles with semicolons
     def join_styles(*styles):
         return '; '.join(filter(None, styles)) + ';'
@@ -186,7 +186,7 @@ def confusion_matrix_to_html(matrix, block_size, model_color, stats_cols=None, s
     grand_total = row_totals.sum()
 
     html = [f'<table style="border-collapse: collapse; width: 100%;">']
-    
+
     # Header row
     html.append('<tr>')
     html.append(f'<th style="{join_styles(BORDER1, HEADER_BORDER_BOTTOM, INDEX_BORDER_RIGHT, PADDING)}"></th>')
@@ -196,11 +196,11 @@ def confusion_matrix_to_html(matrix, block_size, model_color, stats_cols=None, s
         # Apply right border at division between positive/negative classes
         border_right = BORDER_RIGHT if i == last_pos_col else ''
         html.append(f'<th style="{join_styles(BORDER1, border_right, HEADER_BORDER_BOTTOM, PADDING, "text-align: center", col_bg)}">{col}</th>')
-    
+
     # Add spacer column header
     html.append(f'<th style="{join_styles(SPACER_COL)}"></th>')
-    
-    html.append(f'<th style="{join_styles(BORDER2, HEADER_BORDER_BOTTOM, TOTAL_BG, PADDING)}">Total</th>')
+
+    html.append(f'<th style="{join_styles(BORDER2, HEADER_BORDER_BOTTOM, TOTAL_BG, PADDING)}">Total (prevalence)</th>')
     for stat in stats_cols.columns:
         html.append(f'<th style="{join_styles(BORDER2, HEADER_BORDER_BOTTOM, STAT_BG, PADDING)}">{stat.capitalize()}</th>')
     html.append('</tr>')
@@ -213,7 +213,7 @@ def confusion_matrix_to_html(matrix, block_size, model_color, stats_cols=None, s
         # Apply bottom border at division between positive/negative classes
         border_bottom = BORDER_BOTTOM if row_i == last_pos_row else ''
         html.append(f'<th style="{join_styles(BORDER1, border_bottom, INDEX_BORDER_RIGHT, PADDING, bg_color)}">{idx}</th>')
-        
+
         for col_i, col in enumerate(matrix.columns):
             val = matrix.loc[idx, col]
             cell_style = cell_styles.loc[idx, col]
@@ -222,22 +222,22 @@ def confusion_matrix_to_html(matrix, block_size, model_color, stats_cols=None, s
             # Apply bottom border at division between positive/negative classes
             border_bottom = BORDER_BOTTOM if row_i == last_pos_row else ''
             html.append(f'<td style="{join_styles(BORDER1, border_right, border_bottom, PADDING, cell_style)}">{val}</td>')
-        
+
         # Add spacer column
         html.append(f'<td style="{join_styles(SPACER_COL)}"></td>')
-        
+
         # Row total cell
         row_total = row_totals[idx]
         row_pct = f"{(row_total / grand_total * 100):.1f}%"
         html.append(f'<td style="{join_styles(BORDER2, TOTAL_BG, FONT_BOLD, PADDING)}">{row_total} <span style=\'color:#666;font-size:smaller\'>({row_pct})</span></td>')
-        
+
         # Stats columns
         for stat in stats_cols.columns:
             stat_val = stats_cols.loc[idx, stat] if idx in stats_cols.index else ''
             stat_val_str = fmt_stat(stat_val)
             html.append(f'<td style="{join_styles(BORDER2, STAT_BG, PADDING)}">{stat_val_str}</td>')
         html.append('</tr>')
-    
+
     # Add spacer row
     html.append('<tr>')
     total_cols = 1 + len(matrix.columns) + 1 + 1 + len(stats_cols.columns)  # Index + matrix columns + spacer + total + stat columns
@@ -251,10 +251,10 @@ def confusion_matrix_to_html(matrix, block_size, model_color, stats_cols=None, s
         col_total = col_totals[col]
         col_pct = f"{(col_total / grand_total * 100):.1f}%"
         html.append(f'<td style="{join_styles(BORDER2, TOTAL_BG, FONT_BOLD, PADDING)}">{col_total} <span style=\'color:#666;font-size:smaller\'>({col_pct})</span></td>')
-    
+
     # Add spacer cell in totals row
     html.append(f'<td style="{join_styles(SPACER_COL)}"></td>')
-    
+
     html.append(f'<td style="{join_styles(BORDER2, GRAND_TOTAL_BG, FONT_BOLD, PADDING)}">TOTAL = {grand_total}</td>')
     html += ['<td></td>'] * len(stats_cols.columns)
     html.append('</tr>')
@@ -267,10 +267,10 @@ def confusion_matrix_to_html(matrix, block_size, model_color, stats_cols=None, s
             val = stats_rows.loc[col, stat] if col in stats_rows.index else ''
             val_str = fmt_stat(val)
             html.append(f'<td style="{join_styles(BORDER2, STAT_BG, FONT_BOLD, PADDING)}">{val_str}</td>')
-        
+
         # Add spacer cell in stats rows
         html.append(f'<td style="{join_styles(SPACER_COL)}"></td>')
-        
+
         html.append('<td></td>' * (1 + len(stats_cols.columns)))
         html.append('</tr>')
     html.append('</table>')
@@ -289,14 +289,14 @@ def display_confusion_matrix(conf_matrix: pd.DataFrame, model_color=None, pos_cl
     if 'dont_know' in matrix.columns:
         ordered_columns.append('dont_know')
     matrix = matrix.reindex(index=pos_classes + neg_classes, columns=ordered_columns)
-    
+
     # Pre-select the stats we want to display
     stats_cols = stats[['sensitivity', 'specificity']]
     stats_rows = stats[['precision']]
-    
+
     html = confusion_matrix_to_html(matrix, len(pos_classes), model_color, stats_cols=stats_cols, stats_rows=stats_rows)
     st.markdown(html, unsafe_allow_html=True)
 
 def print_confusion_matrix(conf_matrix: pd.DataFrame):
     """Print confusion matrix in text mode with flattened column names."""
-    print(flatten_multiindex_columns(conf_matrix).to_markdown()) 
+    print(flatten_multiindex_columns(conf_matrix).to_markdown())

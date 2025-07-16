@@ -31,8 +31,9 @@ def main():
     start_time = time.time()
 
     parser = argparse.ArgumentParser(description='Evaluate binary classifiers on test data')
-    parser.add_argument('-t', '--test', required=True, help='Path to test set file (CSV or parquet) with ground truth')
-    parser.add_argument('-m', '--models', required=True, nargs='+', help='Paths to model prediction files (CSV or parquet)')
+    parser.add_argument('-t', '--test', required=True, help='Path to test set CSV file with ground truth')
+    parser.add_argument('-m', '--models', required=True, nargs='+', help='Paths to model prediction CSV files')
+    parser.add_argument('-a', '--alias', nargs='+', help='Aliases to call the models listed in --models')
     parser.add_argument('-q', '--queries', help='Path to queries text file')
     parser.add_argument('-f', '--filter', help='Initial filter query to apply to test set')
     parser.add_argument('--metrics', default='auc', help='Comma-separated list of metrics to compute (auc,precision,recall,accuracy,f1,max_f1)')
@@ -53,6 +54,7 @@ def main():
         args.test,
         args.models,
         args.queries,
+        model_names=args.alias,
         filter_query=args.filter,
         gt_column=args.gt_column,
         score_column=args.score_col,
@@ -112,7 +114,7 @@ def main():
         st.title("Interactive Model Evaluator")
 
         # Multi-class selection UI if multiple classes are available
-        if len(info.available_classes) > 1:
+        if len(info.available_classes) > 2:
             st.sidebar.header("Class Selection")
 
             # First select positive classes

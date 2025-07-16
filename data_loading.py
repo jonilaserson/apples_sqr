@@ -86,46 +86,23 @@ def load_testset_and_scores(
     test_file: str,
     model_files: Dict[str, str]
 ) -> Tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
-    """Load test data and model predictions from CSV or parquet files.
+    """Load test data and model predictions from CSV files.
 
     Args:
-        test_file: Path to test set file with ground truth (CSV or parquet)
-        model_files: Dictionary mapping model names to their file paths (CSV or parquet)
+        test_file: Path to test set CSV file with ground truth
+        model_files: Dictionary mapping model names to their file paths
 
     Returns:
             - DataFrame with test data
             - Dictionary mapping model names to their prediction DataFrames
     """
-    # Determine file type and load accordingly
-    if test_file.lower().endswith('.parquet'):
-        # For parquet files, load and set the first column as index
-        test_df = pd.read_parquet(test_file)
-        if len(test_df.columns) > 0:
-            first_col = test_df.columns[0]
-            test_df = test_df.set_index(first_col)
-    else:
-        # Default to CSV
-        test_df = pd.read_csv(test_file, index_col=0)
+    test_df = pd.read_csv(test_file, index_col=0)
 
     model_dfs = {}
     for model_name, model_file in model_files.items():
-        # Determine file type and load accordingly
-        if model_file.lower().endswith('.parquet'):
-            # For parquet files, load and set the first column as index
-            model_df = pd.read_parquet(model_file)
-            if len(model_df.columns) > 0:
-                first_col = model_df.columns[0]
-                model_df = model_df.set_index(first_col)
-        else:
-            # Default to CSV
-            model_df = pd.read_csv(model_file, index_col=0)
-
+        model_df = pd.read_csv(model_file, index_col=0)
         if "model_prediction" in model_df.columns:
             model_df = pop_dict_col(model_df, "model_prediction")
-
-        # Handle predictions column if it exists (common in parquet files)
-        if "predictions" in model_df.columns and isinstance(model_df["predictions"].iloc[0], dict):
-            model_df = pop_dict_col(model_df, "predictions")
 
         model_dfs[model_name] = model_df
 
@@ -146,8 +123,8 @@ def prepare_tables(
     """Prepare test data and model predictions for evaluation, optionally filtered by queries.
 
     Args:
-        test_file: Path to test set file with ground truth (CSV or parquet)
-        model_files: List of paths to model prediction files (CSV or parquet)
+        test_file: Path to test set CSV file with ground truth
+        model_files: List of paths to model prediction CSV files
         queries_file: Optional path to file containing queries
         filter_query: Optional initial filter to apply to test set
         model_names: Optional list of names for models (defaults to filenames)
@@ -204,6 +181,8 @@ def prepare_tables(
 
     # Get available classes from the test set's ground truth column.  Put pos_classes first.
     available_classes = list(map(str, sorted(test_df[gt_column].unique().tolist())))
+    #pos_classes = [c for c in available_classes if c in pos_classes]
+    #available_classes = pos_classes + [c for c in available_classes if c not in pos_classes]
 
     # Handle score columns
     if score_column is None:
@@ -218,8 +197,6 @@ def prepare_tables(
         missing_cols = [col for col in score_columns if col not in model_df.columns]
         if missing_cols:
             raise ValueError(f"Score columns {missing_cols} not found in model file {model_files_dict[model_name]}")
-        drop_cols = [col for col in model_df.columns if col not in score_columns + available_classes]
-        model_df.drop(columns=drop_cols, inplace=True)
 
         # Sum the specified columns to create SCORE_COL
         model_df[SCORE_COL] = model_df[score_columns].sum(axis=1)
